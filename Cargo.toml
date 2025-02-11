@@ -1,0 +1,11 @@
+[workspace]
+members = ["vole", "aes", "okvs"]
+
+[workspace.package]
+version = "0.1.0"
+license = "MIT"
+
+[workspace.dependencies]
+psiri-vole = { path = "./vole", version = "0.1.0"}
+psiri-okvs = { path = "./okvs", version = "0.1.0"}
+psiri-aes = { path = "./aes", version = "0.1.0"}
