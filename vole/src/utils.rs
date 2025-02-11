@@ -77,10 +77,10 @@ pub fn parallel_fft(coefs: &[FE], roots_of_unity: &[FE], log_size: usize, log_bl
     res
 }
 
-pub fn parallel_ifft(evals: &[FE], roots_of_unity_inv: &[FE], log_size: usize, log_blowup_factor: usize) -> Vec<FE> {
-    let size = 1 << (log_size + log_blowup_factor);
-    let mut res = parallel_fft(evals, roots_of_unity_inv, log_size, log_blowup_factor);
-    let inv_size = F::get_root_of_unity(log_size + log_blowup_factor).pow(&UnsignedInteger { limbs: (size as u64).wrapping_neg() });
-    res.iter_mut().for_each(|x| *x *= inv_size);
-    res
-}
+// pub fn parallel_ifft(evals: &[FE], roots_of_unity_inv: &[FE], log_size: usize, log_blowup_factor: usize) -> Vec<FE> {
+//     let size = 1 << (log_size + log_blowup_factor);
+//     let mut res = parallel_fft(evals, roots_of_unity_inv, log_size, log_blowup_factor);
+//     let inv_size = F::get_root_of_unity(log_size + log_blowup_factor).pow(&UnsignedInteger { limbs: (size as u64).wrapping_neg() });
+//     res.iter_mut().for_each(|x| *x *= inv_size);
+//     res
+// }
