@@ -8,6 +8,7 @@ extern crate rayon;
 
 use psiri_vole::fri::{commit_poly, verify_fri_query, query_phase, FriLayer};
 use psiri_vole::utils::parallel_fft;
+use psiri_vole::fri::new_fri_layer;
 use stark_platinum_prover::transcript::StoneProverTranscript;
 use stark_platinum_prover::proof::stark::StarkProof;
 use stark_platinum_prover::fri::fri_decommit::FriDecommitment;
@@ -56,7 +57,7 @@ fn main() {
     let num_threads = current_num_threads();
     println!("🚀 Rayon is using {} threads", num_threads);
     // Set the polynomial degree
-    let log_size: usize = 23;
+    let log_size: usize = 22;
     let log_blowup_factor: usize = 2;
     let polynomial_degree = 1 << log_size; // Degree = polynomial_degree - 1
     let domain_size = polynomial_degree; // Example domain size (must be >= polynomial_degree)
@@ -82,7 +83,8 @@ fn main() {
 
     let start = Instant::now();
     // let (last_value, fri_layer_list) = commit_poly(&poly, log_size, log_blowup_factor, log_size, &roots_of_unity, &roots_of_unity_inv); 
-    let poly_fft = parallel_fft(&evals, &roots_of_unity, log_size, log_blowup_factor);
+    // let poly_fft = parallel_fft(&evals, &roots_of_unity, log_size, log_blowup_factor);
+    let fri_layer = new_fri_layer(&poly, log_blowup_factor, log_size, log_size, &roots_of_unity);
 
     println!("Total time to commit: {:?}", start.elapsed());
 }

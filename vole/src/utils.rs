@@ -7,11 +7,18 @@ use lambdaworks_math::fft::cpu::bit_reversing::{in_place_bit_reverse_permute, re
 use lambdaworks_math::fft::cpu::roots_of_unity::get_powers_of_primitive_root_coset;
 use stark_platinum_prover::fri::Polynomial;
 use rayon::prelude::*;
-use rayon::{current_num_threads};
+use rayon::{current_num_threads, scope};
 use sha3::{Digest, Keccak256};
 use std::time::Instant;
 use std::thread;
 use std::sync::{Arc, Mutex};
+extern crate libc;
+
+fn get_current_cpu() -> i32 {
+    unsafe {
+        libc::sched_getcpu() // Returns the CPU core number
+    }
+}
 
 
 
@@ -83,43 +90,105 @@ pub fn parallel_fft(coefs: &[FE], roots_of_unity: &[FE], log_size: usize, log_bl
     res
 }
 
+// pub fn hash_leaves(unhashed_leaves: &[[FE; 2]]) -> Vec<[u8; 32]> {
+//     let num_threads = current_num_threads();
+//     let chunk_size = unhashed_leaves.len() / (num_threads);
+//     let mut hashed_leaves = vec![[0u8; 32]; unhashed_leaves.len()];
+//     if unhashed_leaves.len() > 2*num_threads {
+//         // let start = Instant::now();
+
+//         hashed_leaves.chunks_mut(chunk_size).zip(unhashed_leaves.chunks_exact(chunk_size)).par_bridge().for_each(|(hashed_chunk, unhashed_chunk)| {
+//             // let start = Instant::now();
+//             // println!("Using thread {:?}", thread::current());   
+//             hashed_chunk.iter_mut().zip(unhashed_chunk.iter()).enumerate().for_each(|(i, (hashed, unhashed))| {
+//                 // if i <= 2 {
+//                 //     println!("Using thread {:?} for leaf {}", thread::current(), i);
+//                 // }
+//                 let mut hasher = Keccak256::new();
+//                 hasher.update(unhashed[0].as_bytes());
+//                 hasher.update(unhashed[1].as_bytes());
+//                 let result = hasher.finalize();
+//                 hashed.copy_from_slice(&result);
+//             });
+//             // println!("Time when using thread {:?} is {:?}", thread::current(), start.elapsed());
+//         });
+
+
+
+//         println!("Time for hashing leaves {:?}", start.elapsed());
+//     } else {
+//         unhashed_leaves.par_iter().zip(hashed_leaves.par_iter_mut()).for_each(|(unhashed, hashed)| {
+//             let mut hasher = Keccak256::new();
+//             hasher.update(unhashed[0].as_bytes());
+//             hasher.update(unhashed[1].as_bytes());
+//             let result = hasher.finalize();
+//             hashed.copy_from_slice(&result);
+//         });
+//     }
+
+//     hashed_leaves
+// }
+
 pub fn hash_leaves(unhashed_leaves: &[[FE; 2]]) -> Vec<[u8; 32]> {
     let num_threads = current_num_threads();
-    let chunk_size = unhashed_leaves.len() / (num_threads);
-    let mut hashed_leaves = vec![[0u8; 32]; unhashed_leaves.len()];
-    if unhashed_leaves.len() > 2*num_threads {
+    let len = unhashed_leaves.len();
+    let chunk_size = len / num_threads;
+    let remainder = len % num_threads;
+
+    // Create a vector of `num_threads` separate vectors for `hashed_leaves`
+    let hashed_leaves_vecs: Vec<Arc<Mutex<Vec<[u8; 32]>>>> = (0..num_threads)
+        .map(|_| Arc::new(Mutex::new(Vec::new())))
+        .collect();
+
+    let start = Instant::now();
+
+    // Use Rayon to process data in chunks in parallel
+    (0..num_threads).into_par_iter().for_each(|i| {
+        let start_idx = i * chunk_size;
+        let end_idx = if i == num_threads - 1 {
+            len
+        } else {
+            start_idx + chunk_size + if i < remainder { 1 } else { 0 }
+        };
+
+        let chunk_unhashed = &unhashed_leaves[start_idx..end_idx];
+
         let start = Instant::now();
-
-        hashed_leaves.chunks_mut(chunk_size).zip(unhashed_leaves.chunks_exact(chunk_size)).par_bridge().for_each(|(hashed_chunk, unhashed_chunk)| {
-            // let start = Instant::now();
-            // println!("Using thread {:?}", thread::current());   
-            hashed_chunk.iter_mut().zip(unhashed_chunk.iter()).enumerate().for_each(|(i, (hashed, unhashed))| {
-                // if i <= 2 {
-                //     println!("Using thread {:?} for leaf {}", thread::current(), i);
-                // }
-                let mut hasher = Keccak256::new();
-                hasher.update(unhashed[0].as_bytes());
-                hasher.update(unhashed[1].as_bytes());
-                let result = hasher.finalize();
-                hashed.copy_from_slice(&result);
-            });
-            // println!("Time when using thread {:?} is {:?}", thread::current(), start.elapsed());
-        });
-
-
-        println!("Time for hashing leaves {:?}", start.elapsed());
-    } else {
-        unhashed_leaves.par_iter().zip(hashed_leaves.par_iter_mut()).for_each(|(unhashed, hashed)| {
+        // Compute the hashes for the chunk of data
+        let local_hashed_chunk: Vec<[u8; 32]> = chunk_unhashed.iter().map(|unhashed| {
             let mut hasher = Keccak256::new();
             hasher.update(unhashed[0].as_bytes());
             hasher.update(unhashed[1].as_bytes());
-            let result = hasher.finalize();
-            hashed.copy_from_slice(&result);
-        });
+            let mut hashed = [0u8; 32]; 
+            hashed.copy_from_slice(&hasher.clone().finalize());
+            hashed
+        }).collect();
+
+        // for i in start_idx..end_idx {
+
+        // }
+
+        println!("Time for cpu {:?} with len {}: {:?}", get_current_cpu(), chunk_unhashed.len(), start.elapsed());
+
+        // Lock the corresponding thread's hashed_leaves vector and append the result
+        let mut hashed_leaves_lock = hashed_leaves_vecs[i].lock().unwrap();
+        hashed_leaves_lock.extend(local_hashed_chunk);
+    });
+
+    println!("Time for hashing leaves: {:?}", start.elapsed());
+
+    // Concatenate all the results into a single vector
+    let mut final_hashed_leaves = Vec::with_capacity(len);
+    for hashed_vec in hashed_leaves_vecs {
+        let hashed_vec_lock = hashed_vec.lock().unwrap();
+        final_hashed_leaves.extend_from_slice(&hashed_vec_lock);
     }
 
-    hashed_leaves
+    final_hashed_leaves
 }
+
+
+
 
 pub fn sibling_index(node_index: usize) -> usize {
     if node_index % 2 == 0 {

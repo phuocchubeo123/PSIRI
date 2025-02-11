@@ -24,7 +24,7 @@ use std::time::Instant;
 use std::convert::TryInto;
 use rayon::prelude::*;
 use rayon::current_num_threads;
-use rayon::ThreadPoolBuilder;
+use rayon::{scope};
 use std::thread;
 
 pub type F = Stark252PrimeField;
