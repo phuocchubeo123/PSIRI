@@ -53,17 +53,21 @@ pub fn parallel_fft(coefs: &[FE], roots_of_unity: &[FE], log_size: usize, log_bl
 
         if 2*stride > chunk_size {
             let small_chunk_size = stride / num_threads;
+            let remainder = stride % num_threads;
             for start in (0..size).step_by(2*stride) {
                 let (left, right) = res[start..start+2*stride].split_at_mut(stride);
+                let mut left1 = left.to_vec();
+                let mut right1 = right.to_vec();
 
                 (0..num_threads).into_par_iter()
                     .for_each(|i| {
                         let start_idx = i * small_chunk_size;
-                        let end_idx = if i == num_threads - 1 {
-                            stride
+                        let mut end_idx = 0;
+                        if i == num_threads - 1 {
+                            end_idx = stride;
                         } else {
-                            start_idx + small_chunk_size
-                        };
+                            end_idx = start_idx + small_chunk_size;
+                        }
 
                         let mut left_lock = new_left[i].lock().unwrap();
                         let mut right_lock = new_right[i].lock().unwrap();
@@ -83,27 +87,28 @@ pub fn parallel_fft(coefs: &[FE], roots_of_unity: &[FE], log_size: usize, log_bl
                 (0..num_threads).into_iter()
                     .for_each(|i| {
                         let start_idx = i * small_chunk_size;
-                        let end_idx = if i == num_threads - 1 {
-                            stride
+                        let mut end_idx = 0;
+                        if i == num_threads - 1 {
+                            end_idx = stride;
                         } else {
-                            start_idx + small_chunk_size
-                        };
+                            end_idx = start_idx + small_chunk_size;
+                        }
                         left[start_idx..end_idx].copy_from_slice(&new_left[i].lock().unwrap());
                         right[start_idx..end_idx].copy_from_slice(&new_right[i].lock().unwrap());
-                    })
+                    });
 
-                // left.par_chunks_mut(small_chunk_size)
-                //     .zip(right.par_chunks_mut(small_chunk_size))
-                //     .enumerate()
-                //     .for_each(|(i, (left_chunk, right_chunk))| {
-                //         for j in 0..small_chunk_size {
-                //             let zp = roots_of_unity[((i*small_chunk_size+j) << p) & mask];
-                //             let a = left_chunk[j];
-                //             let b = right_chunk[j];
-                //             left_chunk[j] = a + zp * b;
-                //             right_chunk[j] = a - zp * b;
-                //         }
-                //     });
+                left1.par_chunks_mut(small_chunk_size)
+                    .zip(right1.par_chunks_mut(small_chunk_size))
+                    .enumerate()
+                    .for_each(|(i, (left_chunk, right_chunk))| {
+                        for j in 0..small_chunk_size {
+                            let zp = roots_of_unity[((i*small_chunk_size+j) << p) & mask];
+                            let a = left_chunk[j];
+                            let b = right_chunk[j];
+                            left_chunk[j] = a + zp * b;
+                            right_chunk[j] = a - zp * b;
+                        }
+                    });
             }
 
         } else {
@@ -147,11 +152,12 @@ pub fn hash_leaves(unhashed_leaves: &[[FE; 2]]) -> Vec<[u8; 32]> {
     // Use Rayon to process data in chunks in parallel
     (0..num_threads).into_par_iter().for_each(|i| {
         let start_idx = i * chunk_size;
-        let end_idx = if i == num_threads - 1 {
-            len
+        let mut end_idx = 0;
+        if i == num_threads - 1 {
+            end_idx = len;
         } else {
-            start_idx + chunk_size + if i < remainder { 1 } else { 0 }
-        };
+            end_idx = start_idx + chunk_size;
+        }
 
         let chunk_unhashed = &unhashed_leaves[start_idx..end_idx];
 
@@ -165,10 +171,6 @@ pub fn hash_leaves(unhashed_leaves: &[[FE; 2]]) -> Vec<[u8; 32]> {
             hashed.copy_from_slice(&hasher.clone().finalize());
             hashed
         }).collect();
-
-        // for i in start_idx..end_idx {
-
-        // }
 
         println!("Time for cpu {:?} with len {}: {:?}", get_current_cpu(), chunk_unhashed.len(), start.elapsed());
 
