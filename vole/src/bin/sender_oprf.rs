@@ -106,6 +106,8 @@ fn main() {
     let num_threads = current_num_threads();
     println!("🚀 Rayon is using {} threads", num_threads);
 
+    let size = 1 << 16;
+
     if role == "sender" {
         // Sender logic
         println!("Starting as Sender...");
@@ -113,7 +115,6 @@ fn main() {
             .expect("Failed to connect to receiver");
         let mut channel = TcpChannel::new(stream);
 
-        let size = 1 << 20;  // Example size
         let mut oprf = OprfSender::new(&mut channel, size, true, PHUOC_LPN);
 
         let data = channel.receive_stark252(size).expect("Failed to receive data from receiver");
@@ -136,7 +137,6 @@ fn main() {
         let (stream, _) = listener.accept().expect("Failed to accept connection");
         let mut channel = TcpChannel::new(stream);
 
-        let size = 1 << 20;  // Example size
         let mut oprf = OprfReceiver::new(&mut channel, size, true, PHUOC_LPN);
 
         let data = (0..size).map(|_| rand_field_element()).collect::<Vec<FE>>();

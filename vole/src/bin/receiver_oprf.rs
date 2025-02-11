@@ -29,7 +29,7 @@ fn main() {
     let (stream, _) = listener.accept().expect("Failed to accept connection");
     let mut channel = TcpChannel::new(stream);
 
-    let size = 1<<20;
+    let size = 1<<16;
     let mut oprf = OprfReceiver::new(&mut channel, size, true, PHUOC_LPN);
 
     let data = (0..size).map(|_| rand_field_element()).collect::<Vec<FE>>();
