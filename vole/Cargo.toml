@@ -19,6 +19,7 @@ sha3 = "0.10.8"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 rayon = { version = "1.10", optional = true }
+clap = "4.5.28"
 
 [features]
 default = ["parallel"]
