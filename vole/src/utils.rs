@@ -40,18 +40,20 @@ pub fn parallel_fft(coefs: &[FE], roots_of_unity: &[FE], log_size: usize, log_bl
     let mut p: usize = log_size + log_blowup_factor - 1;
     let mask = size - 1;
 
+    let num_threads = current_num_threads();
+    let chunk_size = size / num_threads;
+
+
+    let new_left: Vec<Arc<Mutex<Vec<FE>>>> = (0..num_threads)
+        .map(|_| Arc::new(Mutex::new(Vec::new())))
+        .collect(); 
+    let new_right: Vec<Arc<Mutex<Vec<FE>>>> = (0..num_threads)
+        .map(|_| Arc::new(Mutex::new(Vec::new())))
+        .collect();
+
+
     while stride < size {
-        let num_threads = current_num_threads();
-        let chunk_size = size / num_threads;
-
-        let new_left: Vec<Arc<Mutex<Vec<FE>>>> = (0..num_threads)
-            .map(|_| Arc::new(Mutex::new(Vec::new())))
-            .collect(); 
-        let new_right: Vec<Arc<Mutex<Vec<FE>>>> = (0..num_threads)
-            .map(|_| Arc::new(Mutex::new(Vec::new())))
-            .collect();
-
-        if 2*stride > chunk_size {
+        if 2*stride > num_threads {
             let small_chunk_size = stride / num_threads;
             let remainder = stride % num_threads;
             for start in (0..size).step_by(2*stride) {
@@ -109,23 +111,64 @@ pub fn parallel_fft(coefs: &[FE], roots_of_unity: &[FE], log_size: usize, log_bl
                             right_chunk[j] = a - zp * b;
                         }
                     });
+
+                println!("Are they equal? {}", left == left1 && right == right1);
             }
 
         } else {
             // let start = Instant::now();
-            res.par_chunks_mut(chunk_size)
-                .enumerate()
-                .for_each(|(i, chunk)| {
-                    chunk.par_chunks_mut(2*stride).enumerate().for_each(|(i, small_chunk)| {
+            let new_chunk_size = chunk_size / (2*stride) * 2*stride;
+            (0..(size/new_chunk_size)).into_par_iter()
+                .for_each(|i| {
+                    let start_idx = i * new_chunk_size;
+                    let mut end_idx = 0;
+                    if i == num_threads - 1 {
+                        end_idx = size;
+                    } else {
+                        end_idx = start_idx + new_chunk_size;
+                    }
+
+                    let mut left_lock = new_left[i].lock().unwrap();
+                    let mut right_lock = new_right[i].lock().unwrap();
+
+                    *left_lock = vec![FE::zero(); end_idx - start_idx];
+
+                    for start in (start_idx..end_idx).step_by(2*stride) {
                         for j in 0..stride {
-                            let zp = roots_of_unity[(j << p) & mask];
-                            let a = small_chunk[j];
-                            let b = small_chunk[j + stride];
-                            small_chunk[j] = a + zp * b;
-                            small_chunk[j + stride] = a - zp * b;
+                            let zp = roots_of_unity[((start + j) << p) & mask];
+                            let a = res[start + j];
+                            let b = res[start + j + stride];
+                            left_lock[start + j - start_idx] = (a + zp * b);
+                            left_lock[start + j + stride - start_idx] = (a - zp * b);
                         }
-                    });
+                    }
                 });
+
+            (0..(size/new_chunk_size)).into_iter()
+                .for_each(|i| {
+                    let start_idx = i * new_chunk_size;
+                    let mut end_idx = 0;
+                    if i == num_threads - 1 {
+                        end_idx = size;
+                    } else {
+                        end_idx = start_idx + new_chunk_size;
+                    }
+                    res[start_idx..end_idx].copy_from_slice(&new_left[i].lock().unwrap());
+                });
+
+            // res.par_chunks_mut(chunk_size)
+            //     .enumerate()
+            //     .for_each(|(i, chunk)| {
+            //         chunk.par_chunks_mut(2*stride).enumerate().for_each(|(i, small_chunk)| {
+            //             for j in 0..stride {
+            //                 let zp = roots_of_unity[(j << p) & mask];
+            //                 let a = small_chunk[j];
+            //                 let b = small_chunk[j + stride];
+            //                 small_chunk[j] = a + zp * b;
+            //                 small_chunk[j + stride] = a - zp * b;
+            //             }
+            //         });
+            //     });
             // println!("Time for case 2: {:?}", start.elapsed());
         }
 
