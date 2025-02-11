@@ -92,14 +92,6 @@ impl MerkleTree
                             new_parent.copy_from_slice(&hasher.finalize());
                         });
                     });
-
-                // Test time 
-                children_iter.par_chunks_exact(2*chunk_size).for_each(|children| {
-                    let mut hasher = Keccak256::new();
-                    hasher.update(&children[0]);
-                    hasher.update(&children[1]);
-                    let _ = hasher.finalize();
-                });
             } else {
                 new_level_iter.par_iter_mut().zip(children_iter.par_chunks_exact(2)).for_each(|(new_parent, children)| {
                     let mut hasher = Keccak256::new();
@@ -294,7 +286,7 @@ pub fn new_fri_layer_from_vec(
     fixed_points_num: usize,
 ) -> FriLayer
 {
-    // let start = Instant::now();
+    let start = Instant::now();
     let mut evals = evaluation.to_vec();
     in_place_bit_reverse_permute(&mut evals);
     in_place_bit_reverse_permute(&mut evals[..fixed_points_num]);
@@ -303,7 +295,7 @@ pub fn new_fri_layer_from_vec(
     for chunk in evals.chunks(2) {
         to_commit.push([chunk[0].clone(), chunk[1].clone()]);
     }
-    // println!("Time to bit reverse: {:?}", start.elapsed());
+    println!("Time to bit reverse: {:?}", start.elapsed());
 
     let merkle_tree = MerkleTree::build(&to_commit);
     // println!("Time to build Merkle tree: {:?}", start.elapsed());
@@ -323,7 +315,11 @@ pub fn new_fri_layer(
 {
     let fixed_points_num = 1 << log_fixed_points_num;
 
+    let start = Instant::now();
     let mut evaluation = parallel_fft(&poly.coefficients, roots_of_unity, log_poly_degree, log_blowup_factor);
+    println!("Time to compute FFT: {:?}", start.elapsed());
+
+    let start = Instant::now();
     in_place_bit_reverse_permute(&mut evaluation);
     in_place_bit_reverse_permute(&mut evaluation[..fixed_points_num]);
 
@@ -331,8 +327,11 @@ pub fn new_fri_layer(
     for chunk in evaluation.chunks(2) {
         to_commit.push([chunk[0].clone(), chunk[1].clone()]);
     }
+    println!("Time to bit reverse: {:?}", start.elapsed());
 
+    let start = Instant::now();
     let merkle_tree = MerkleTree::build(&to_commit);
+    println!("Time to build Merkle tree: {:?}", start.elapsed());
 
     FriLayer::new(
         &evaluation,

@@ -53,60 +53,16 @@ impl Okvs for RbOkvs {
         let num_threads = rayon::current_num_threads();
         let chunk_size = n / num_threads;
 
-        start.par_chunks_mut(chunk_size).zip(band.par_chunks_mut(chunk_size)).enumerate().for_each(|(i, (start, band))| {
-            let start_idx = i * chunk_size;
-            for j in 0..chunk_size {
-                start[j] = hash_to_index(key[start_idx + j], &self.r1, self.columns - self.band_width);
-                band[j] = hash_to_band(key[start_idx + j], &self.r2);
-            }
+        start.par_iter_mut().zip(band.par_iter_mut()).enumerate().for_each(|(i, (starti, bandi))| {
+            *starti = hash_to_index(key[i], &self.r1, self.columns - self.band_width);
+            *bandi = hash_to_band(key[i], &self.r2);
         });
 
-        // for i in (0..(n-7)).step_by(8) {
-        //     start[i] = hash_to_index(key[i], &self.r1, self.columns - self.band_width);
-        //     band[i] = hash_to_band(key[i], &self.r2);
-        //     start[i+1] = hash_to_index(key[i+1], &self.r1, self.columns - self.band_width);
-        //     band[i+1] = hash_to_band(key[i+1], &self.r2);
-        //     start[i+2] = hash_to_index(key[i+2], &self.r1, self.columns - self.band_width);
-        //     band[i+2] = hash_to_band(key[i+2], &self.r2);
-        //     start[i+3] = hash_to_index(key[i+3], &self.r1, self.columns - self.band_width);
-        //     band[i+3] = hash_to_band(key[i+3], &self.r2);
-        //     start[i+4] = hash_to_index(key[i+4], &self.r1, self.columns - self.band_width);
-        //     band[i+4] = hash_to_band(key[i+4], &self.r2);
-        //     start[i+5] = hash_to_index(key[i+5], &self.r1, self.columns - self.band_width);
-        //     band[i+5] = hash_to_band(key[i+5], &self.r2);
-        //     start[i+6] = hash_to_index(key[i+6], &self.r1, self.columns - self.band_width);
-        //     band[i+6] = hash_to_band(key[i+6], &self.r2);
-        //     start[i+7] = hash_to_index(key[i+7], &self.r1, self.columns - self.band_width);
-        //     band[i+7] = hash_to_band(key[i+7], &self.r2);
-        // }
-
-        // for i in (n - n % 8)..n {
-        //     start[i] = hash_to_index(key[i], &self.r1, self.columns - self.band_width);
-        //     band[i] = hash_to_band(key[i], &self.r2);
-        // }
         let mut res = vec![FE::zero(); n];
 
-        res.par_chunks_mut(chunk_size).enumerate().for_each(|(i, res)| {
-            let start_idx = i * chunk_size;
-            for j in 0..chunk_size {
-                res[j] = inner_product(&band[start_idx + j], &encoding[start[start_idx + j]..start[start_idx + j]+self.band_width]);
-            }
+        res.par_iter_mut().enumerate().for_each(|(i, resi)| {
+            *resi = inner_product(&band[i], &encoding[start[i]..start[i]+self.band_width]);
         });
-
-        // for i in (0..(n-7)).step_by(8) {
-        //     res[i] = inner_product(&band[i], &encoding[start[i]..start[i]+self.band_width]);
-        //     res[i+1] = inner_product(&band[i+1], &encoding[start[i+1]..start[i+1]+self.band_width]);
-        //     res[i+2] = inner_product(&band[i+2], &encoding[start[i+2]..start[i+2]+self.band_width]);
-        //     res[i+3] = inner_product(&band[i+3], &encoding[start[i+3]..start[i+3]+self.band_width]);
-        //     res[i+4] = inner_product(&band[i+4], &encoding[start[i+4]..start[i+4]+self.band_width]);
-        //     res[i+5] = inner_product(&band[i+5], &encoding[start[i+5]..start[i+5]+self.band_width]);
-        //     res[i+6] = inner_product(&band[i+6], &encoding[start[i+6]..start[i+6]+self.band_width]);
-        //     res[i+7] = inner_product(&band[i+7], &encoding[start[i+7]..start[i+7]+self.band_width]);
-        // }
-
-        // for i in (n - n % 8)..n {
-        //     res[i] = inner_product(&band[i], &encoding[start[i]..start[i]+self.band_width]);
-        // }
 
         res
     }

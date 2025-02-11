@@ -51,13 +51,13 @@ pub fn sample_usize(min: usize, max: usize) -> usize {
 fn main() {
     // Set the number of threads before running parallel operations
     ThreadPoolBuilder::new()
-        .num_threads(8)  // Change this number to your preference
+        .num_threads(16)  // Change this number to your preference
         .build_global()
         .unwrap();
     let num_threads = current_num_threads();
     println!("🚀 Rayon is using {} threads", num_threads);
     // Set the polynomial degree
-    let log_size: usize = 4;
+    let log_size: usize = 22;
     let log_blowup_factor: usize = 2;
     let polynomial_degree = 1 << log_size; // Degree = polynomial_degree - 1
     let domain_size = polynomial_degree; // Example domain size (must be >= polynomial_degree)

@@ -28,34 +28,29 @@ impl Lpn {
         let mut A_idx = vec![[0usize; 10]; n];
         let mut A_weight = vec![[FE::zero(); 10]; n];
 
-        let num_threads = current_num_threads();
-        let chunk_size = n / num_threads;
-
-        A_idx.par_chunks_mut(chunk_size).zip(A_weight.par_chunks_mut(chunk_size)).enumerate().for_each(|(i, (r_chunk, w_chunk))| {
-            for j in 0..chunk_size {
-                let mut tmp = vec![[0u8; 16]; 10];
-                let mut tmp2 = vec![[0u8; 32]; 10];
-                for m in 0..10 {
-                    tmp[m][0..8].copy_from_slice(&(i*chunk_size+j).to_le_bytes());
-                    tmp[m][8..].copy_from_slice(&(m as usize).to_le_bytes());
-                    tmp2[m][0..8].copy_from_slice(&(i*chunk_size+j).to_le_bytes());
-                    tmp2[m][8..16].copy_from_slice(&(m as usize).to_le_bytes());
-                }
-
-                prp.permute_block(&mut tmp, 10);
-                let r1: Vec<usize> = tmp
-                    .iter()
-                    .map(|x| ((u128::from_le_bytes(*x) >> 64) as usize) % k)
-                    .collect();
-
-                r_chunk[j].copy_from_slice(&r1);
-                let mut tmp_field: Vec<_> = tmp2
-                    .iter()
-                    .map(|x| FE::from_bytes_le(x).expect("Cannot get FE from bytes"))
-                    .collect();
-                field_prp.permute_block(&mut tmp_field, 10);
-                w_chunk[j].copy_from_slice(&tmp_field);
+        A_idx.par_iter_mut().zip(A_weight.par_iter_mut()).enumerate().for_each(|(i, (r, w))| {
+            let mut tmp = vec![[0u8; 16]; 10];
+            let mut tmp2 = vec![[0u8; 32]; 10];
+            for m in 0..10 {
+                tmp[m][0..8].copy_from_slice(&(i).to_le_bytes());
+                tmp[m][8..].copy_from_slice(&(m as usize).to_le_bytes());
+                tmp2[m][0..8].copy_from_slice(&(i).to_le_bytes());
+                tmp2[m][8..16].copy_from_slice(&(m as usize).to_le_bytes());
             }
+
+            prp.permute_block(&mut tmp, 10);
+            let r1: Vec<usize> = tmp
+                .iter()
+                .map(|x| ((u128::from_le_bytes(*x) >> 64) as usize) % k)
+                .collect();
+
+            r.copy_from_slice(&r1);
+            let mut tmp_field: Vec<_> = tmp2
+                .iter()
+                .map(|x| FE::from_bytes_le(x).expect("Cannot get FE from bytes"))
+                .collect();
+            field_prp.permute_block(&mut tmp_field, 10);
+            w.copy_from_slice(&tmp_field);
         });
 
         Self {
@@ -75,25 +70,18 @@ impl Lpn {
         let num_threads = current_num_threads();
         let chunk_size = self.n / num_threads;
 
-        K.par_chunks_mut(chunk_size).enumerate().for_each(|(i, K_chunk)| {
-            for j in 0..chunk_size {
-                for m in 0..10 {
-                    K_chunk[j] += self.A_weight[i*chunk_size+j][m] * kkK[self.A_idx[i*chunk_size+j][m]];
-                }
+        K.par_iter_mut().enumerate().for_each(|(i, Ki)| {
+            for m in 0..10 {
+                *Ki += self.A_weight[i][m] * kkK[self.A_idx[i][m]];
             }
         });
     }
 
     pub fn compute_K_and_M(&mut self, K: &mut [FE], M: &mut [FE], kkK: &[FE], kkM: &[FE]) {
-        let num_threads = current_num_threads();
-        let chunk_size = self.n / num_threads;
-
-        K.par_chunks_mut(chunk_size).zip(M.par_chunks_mut(chunk_size)).enumerate().for_each(|(i, (K_chunk, M_chunk))| {
-            for j in 0..chunk_size {
-                for m in 0..10 {
-                    K_chunk[j] += self.A_weight[i*chunk_size+j][m] * kkK[self.A_idx[i*chunk_size+j][m]];
-                    M_chunk[j] += self.A_weight[i*chunk_size+j][m] * kkM[self.A_idx[i*chunk_size+j][m]];
-                }
+        K.par_iter_mut().zip(M.par_iter_mut()).enumerate().for_each(|(i, (Ki, Mi))| {
+            for m in 0..10 {
+                *Ki += self.A_weight[i][m] * kkK[self.A_idx[i][m]];
+                *Mi += self.A_weight[i][m] * kkM[self.A_idx[i][m]];
             }
         });
     }

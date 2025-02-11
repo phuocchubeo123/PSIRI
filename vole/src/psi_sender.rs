@@ -324,13 +324,11 @@ impl OprfSender {
         let chunk_size = self.n / num_threads;
 
         self.outputs_byte = vec![[0u8; 32]; self.n];
-        self.outputs_byte.par_chunks_mut(chunk_size).enumerate().for_each(|(i, outputs_chunk)| {
-            for j in 0..chunk_size {
-                let mut hasher = Keccak256::new();
-                hasher.update(values[i*chunk_size+j].as_bytes());
-                hasher.update(o[i*chunk_size+j].as_bytes());
-                outputs_chunk[j].copy_from_slice(&hasher.finalize());
-            }
+        self.outputs_byte.par_iter_mut().enumerate().for_each(|(i, outputs_i)| {
+            let mut hasher = Keccak256::new();
+            hasher.update(values[i].as_bytes());
+            hasher.update(o[i].as_bytes());
+            outputs_i.copy_from_slice(&hasher.finalize());
         });
 
         println!("End of output hashing: {:?}", start.elapsed());
