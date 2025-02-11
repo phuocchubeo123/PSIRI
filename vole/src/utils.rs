@@ -58,8 +58,6 @@ pub fn parallel_fft(coefs: &[FE], roots_of_unity: &[FE], log_size: usize, log_bl
             let remainder = stride % num_threads;
             for start in (0..size).step_by(2*stride) {
                 let (left, right) = res[start..start+2*stride].split_at_mut(stride);
-                let mut left1 = left.to_vec();
-                let mut right1 = right.to_vec();
 
                 (0..num_threads).into_par_iter()
                     .for_each(|i| {
@@ -98,21 +96,6 @@ pub fn parallel_fft(coefs: &[FE], roots_of_unity: &[FE], log_size: usize, log_bl
                         left[start_idx..end_idx].copy_from_slice(&new_left[i].lock().unwrap());
                         right[start_idx..end_idx].copy_from_slice(&new_right[i].lock().unwrap());
                     });
-
-                left1.par_chunks_mut(small_chunk_size)
-                    .zip(right1.par_chunks_mut(small_chunk_size))
-                    .enumerate()
-                    .for_each(|(i, (left_chunk, right_chunk))| {
-                        for j in 0..small_chunk_size {
-                            let zp = roots_of_unity[((i*small_chunk_size+j) << p) & mask];
-                            let a = left_chunk[j];
-                            let b = right_chunk[j];
-                            left_chunk[j] = a + zp * b;
-                            right_chunk[j] = a - zp * b;
-                        }
-                    });
-
-                println!("Are they equal? {}", left == left1 && right == right1);
             }
 
         } else {
@@ -155,21 +138,6 @@ pub fn parallel_fft(coefs: &[FE], roots_of_unity: &[FE], log_size: usize, log_bl
                     }
                     res[start_idx..end_idx].copy_from_slice(&new_left[i].lock().unwrap());
                 });
-
-            // res.par_chunks_mut(chunk_size)
-            //     .enumerate()
-            //     .for_each(|(i, chunk)| {
-            //         chunk.par_chunks_mut(2*stride).enumerate().for_each(|(i, small_chunk)| {
-            //             for j in 0..stride {
-            //                 let zp = roots_of_unity[(j << p) & mask];
-            //                 let a = small_chunk[j];
-            //                 let b = small_chunk[j + stride];
-            //                 small_chunk[j] = a + zp * b;
-            //                 small_chunk[j + stride] = a - zp * b;
-            //             }
-            //         });
-            //     });
-            // println!("Time for case 2: {:?}", start.elapsed());
         }
 
         stride *= 2;
