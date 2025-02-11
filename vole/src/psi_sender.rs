@@ -106,10 +106,10 @@ impl OprfSender {
             X_new_poly: Polynomial::new(vec![FE::zero(); 1].as_slice()),
             X_new_commit: FriLayer::new(
                 vec![FE::zero(); 1].as_slice(), 
-                MT::build(vec![vec![FE::zero(); 2]; 1].as_slice()).unwrap()),
+                MerkleTree::build(vec![[FE::zero(); 2]; 1].as_slice())),
             S_new_commit: FriLayer::new(
                 vec![FE::zero(); 1].as_slice(), 
-                MT::build(vec![vec![FE::zero(); 2]; 1].as_slice()).unwrap()),
+                MerkleTree::build(vec![[FE::zero(); 2]; 1].as_slice())),
             T_new_last_value: FE::zero(),
             T_new_fri_layers: vec![],
             outputs_byte: vec![],
@@ -332,12 +332,6 @@ impl OprfSender {
                 outputs_chunk[j].copy_from_slice(&hasher.finalize());
             }
         });
-        // for i in 0..self.n {
-        //     let mut hasher = Keccak256::new();
-        //     hasher.update(values[i].as_bytes());
-        //     hasher.update(o[i].as_bytes());
-        //     self.outputs_byte[i].copy_from_slice(&hasher.finalize());
-        // }
 
         println!("End of output hashing: {:?}", start.elapsed());
     }
@@ -397,7 +391,7 @@ impl OprfSender {
         io.send_stark252(&S_new_evaluations_sym).expect("Cannot send sym evaluations of S_new");
         let S_new_paths: Vec<Proof<Commitment>> = iotas_consistency
             .iter()
-            .map(|&iota| self.S_new_commit.merkle_tree.get_proof_by_pos(iota>>1).unwrap())
+            .map(|&iota| self.S_new_commit.merkle_tree.get_proof_by_pos(iota>>1))
             .collect();
         send_merkle_path(io, &S_new_paths);
 
@@ -414,7 +408,7 @@ impl OprfSender {
         io.send_stark252(&X_new_evaluations_sym).expect("Cannot send sym evaluations of X_new");
         let X_new_paths: Vec<Proof<Commitment>> = iotas_consistency
             .iter()
-            .map(|&iota| self.X_new_commit.merkle_tree.get_proof_by_pos(iota>>1).unwrap())
+            .map(|&iota| self.X_new_commit.merkle_tree.get_proof_by_pos(iota>>1))
             .collect();
         send_merkle_path(io, &X_new_paths);
 
@@ -433,7 +427,7 @@ impl OprfSender {
         let start = Instant::now();
         let T_new_paths: Vec<Proof<Commitment>> = iotas_consistency
             .iter()
-            .map(|&iota| self.T_new_fri_layers[0].merkle_tree.get_proof_by_pos(iota>>1).unwrap())
+            .map(|&iota| self.T_new_fri_layers[0].merkle_tree.get_proof_by_pos(iota>>1))
             .collect();
         println!("Time to prepare paths for T_new: {:?}", start.elapsed());
         let start = Instant::now();
@@ -444,7 +438,7 @@ impl OprfSender {
         // Send the outputs and the verify path
         io.send_block::<32>(&self.outputs_byte);
         // Try to get the path from outputs_byte to merkle_root of S_new
-        let outputs_byte_path = self.S_new_commit.merkle_tree.get_proof_by_pos(0).unwrap().merkle_path;
+        let outputs_byte_path = self.S_new_commit.merkle_tree.get_proof_by_pos(0).merkle_path;
 
         let mut verify_path = vec![[0u8; 32]; 2];
         verify_path.copy_from_slice(&outputs_byte_path[self.log_fixed_points_num-1..]);

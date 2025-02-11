@@ -1,4 +1,4 @@
-use crate::utils::{rand_field_element, parallel_fft};
+use crate::utils::{rand_field_element, parallel_fft, hash_leaves, sibling_index, parent_index};
 use crate::comm_channel::CommunicationChannel;
 use psiri_aes::prg::{PRG};
 use lambdaworks_math::polynomial;
@@ -10,7 +10,7 @@ use lambdaworks_math::field::traits::IsFFTField;
 use lambdaworks_math::unsigned_integer::element::UnsignedInteger;
 use lambdaworks_crypto::fiat_shamir::is_transcript::IsTranscript;
 use lambdaworks_crypto::merkle_tree::proof::Proof;
-use lambdaworks_crypto::merkle_tree::merkle::MerkleTree;
+// use lambdaworks_crypto::merkle_tree::merkle::MerkleTree;
 use stark_platinum_prover::fri::fri_decommit::FriDecommitment;
 use stark_platinum_prover::fri::{Polynomial};
 use stark_platinum_prover::config::{Commitment, BatchedMerkleTreeBackend, BatchedMerkleTree};
@@ -29,20 +29,19 @@ use std::thread;
 
 pub type F = Stark252PrimeField;
 pub type FE = FieldElement<F>;
-pub type MT = MerkleTree<BatchedMerkleTreeBackend<F>>; // MerkleTree
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct FriLayer
 {
     pub evaluation: Vec<FE>,
-    pub merkle_tree: MT,
+    pub merkle_tree: MerkleTree,
 }
 
 impl FriLayer
 {
     pub fn new(
         evaluation: &[FE],
-        merkle_tree: MT,
+        merkle_tree: MerkleTree,
     ) -> Self {
         Self {
             evaluation: evaluation.to_vec(),
@@ -50,6 +49,104 @@ impl FriLayer
         }
     }
 }
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct MerkleTree
+{
+    pub root: [u8; 32],
+    nodes: Vec<[u8; 32]>,
+}
+
+impl MerkleTree
+{
+    pub fn build(unhashed_leaves: &[[FE; 2]]) -> Self {
+        // let start = Instant::now();
+        let hashed_leaves: Vec<[u8; 32]> = hash_leaves(unhashed_leaves);
+        let leaves_len = hashed_leaves.len();   
+        // println!("Time to hash leaves: {:?}", start.elapsed());
+
+        let mut nodes: Vec<[u8; 32]> = vec![hashed_leaves[0].clone(); leaves_len - 1];
+        nodes.extend(hashed_leaves);
+        // println!("Time to create leaves: {:?}", start.elapsed());
+
+        let mut level_begin_index = leaves_len - 1;
+        let mut level_end_index = 2 * level_begin_index;
+        while level_begin_index != level_end_index {
+            let new_level_begin_index = level_begin_index / 2;
+            let new_level_length = level_begin_index - new_level_begin_index;
+
+            let (new_level_iter, children_iter) =
+                nodes[new_level_begin_index..level_end_index + 1].split_at_mut(new_level_length);
+
+            let num_threads = current_num_threads();
+            let chunk_size = new_level_length / num_threads;
+
+            if chunk_size > 2 {
+                new_level_iter.par_chunks_mut(chunk_size)
+                    .zip(children_iter.par_chunks_exact(2*chunk_size))
+                    .for_each(|(new_level, children)| {
+                        new_level.iter_mut().zip(children.chunks_exact(2)).for_each(|(new_parent, children)| {
+                            let mut hasher = Keccak256::new();
+                            hasher.update(&children[0]);
+                            hasher.update(&children[1]);
+                            new_parent.copy_from_slice(&hasher.finalize());
+                        });
+                    });
+
+                // Test time 
+                children_iter.par_chunks_exact(2*chunk_size).for_each(|children| {
+                    let mut hasher = Keccak256::new();
+                    hasher.update(&children[0]);
+                    hasher.update(&children[1]);
+                    let _ = hasher.finalize();
+                });
+            } else {
+                new_level_iter.par_iter_mut().zip(children_iter.par_chunks_exact(2)).for_each(|(new_parent, children)| {
+                    let mut hasher = Keccak256::new();
+                    hasher.update(&children[0]);
+                    hasher.update(&children[1]);
+                    new_parent.copy_from_slice(&hasher.finalize());
+                });
+            }
+
+            level_end_index = level_begin_index - 1;
+            level_begin_index = new_level_begin_index;
+        }
+
+        // println!("Time to build Merkle tree: {:?}", start.elapsed());
+
+        MerkleTree {
+            root: nodes[0].clone(),
+            nodes,
+        }
+    }
+
+    pub fn get_proof_by_pos(&self, pos: usize) -> Proof<[u8; 32]> {
+        let pos = pos + self.nodes.len() / 2;
+        let merkle_path = self.build_merkle_path(pos);
+
+        self.create_proof(merkle_path)
+    }
+
+    fn create_proof(&self, merkle_path: Vec<[u8; 32]>) -> Proof<[u8; 32]> {
+        Proof { merkle_path }
+    }
+
+    fn build_merkle_path(&self, pos: usize) -> Vec<[u8; 32]> {
+        let mut merkle_path = Vec::new();
+        let mut pos = pos;
+
+        while pos != 0 {
+            let node = self.nodes.get(sibling_index(pos)).unwrap();
+            merkle_path.push(node.clone());
+
+            pos = parent_index(pos);
+        }
+
+        merkle_path
+    }
+}
+
 
 // Returns both the random poly added and the final blinded poly
 pub fn get_blind_poly(poly: &Polynomial<FE>, log_size: usize, log_blowup_factor: usize) -> (Polynomial<FE>, Polynomial<FE>) {
@@ -126,12 +223,15 @@ pub fn commit_phase(
     let mut new_evaluations = vec![FE::zero(); current_size];
 
     for layer in 0..log_size {
+        println!("Time at the beginning of the loop: {:?}", start.elapsed());
         // Commit the current folded poly (also include the original poly in the first step)
         current_layer = new_fri_layer_from_vec(&current_evaluations[..current_size], current_fixed_points_num);
+        println!("Time to create new fri layer: {:?}", start.elapsed());
 
         let new_data = &current_layer.merkle_tree.root;
 
         fri_layer_list.push(current_layer.clone()); // TODO: remove this clone
+        // println!("Time to push to fri layer list: {:?}", start.elapsed());
 
         // >>>> Send commitment: [pₖ]
         transcript.append_bytes(new_data);
@@ -143,7 +243,6 @@ pub fn commit_phase(
 
         // Manually fold the polynomial
         current_size /= 2;
-        let start = Instant::now();
 
         let num_threads = current_num_threads();
         let chunk_size = current_size / num_threads;
@@ -168,8 +267,14 @@ pub fn commit_phase(
         });
         }
 
+        // println!("Time to fold: {:?}", start.elapsed());
+
         current_evaluations[..current_size].copy_from_slice(&new_evaluations[..current_size]);
+
+        println!("Time to copy: {:?}", start.elapsed());
     }
+
+    println!("Time until here: {:?}", start.elapsed());
 
     // <<<< Receive challenge: 𝜁ₙ₋₁
     let zeta = transcript.sample_field_element();
@@ -178,6 +283,8 @@ pub fn commit_phase(
 
     // >>>> Send value: pₙ
     transcript.append_field_element(&last_value);
+
+    println!("Time until return: {:?}", start.elapsed());
 
     (last_value, fri_layer_list)
 }
@@ -191,14 +298,14 @@ pub fn new_fri_layer_from_vec(
     let mut evals = evaluation.to_vec();
     in_place_bit_reverse_permute(&mut evals);
     in_place_bit_reverse_permute(&mut evals[..fixed_points_num]);
-    // println!("Time to bit reverse: {:?}", start.elapsed());
 
     let mut to_commit = Vec::new();
     for chunk in evals.chunks(2) {
-        to_commit.push(vec![chunk[0].clone(), chunk[1].clone()]);
+        to_commit.push([chunk[0].clone(), chunk[1].clone()]);
     }
-    // let start = Instant::now();
-    let merkle_tree = BatchedMerkleTree::build(&to_commit).unwrap();
+    // println!("Time to bit reverse: {:?}", start.elapsed());
+
+    let merkle_tree = MerkleTree::build(&to_commit);
     // println!("Time to build Merkle tree: {:?}", start.elapsed());
     FriLayer::new(
         &evals,
@@ -222,10 +329,10 @@ pub fn new_fri_layer(
 
     let mut to_commit = Vec::new();
     for chunk in evaluation.chunks(2) {
-        to_commit.push(vec![chunk[0].clone(), chunk[1].clone()]);
+        to_commit.push([chunk[0].clone(), chunk[1].clone()]);
     }
 
-    let merkle_tree = BatchedMerkleTree::build(&to_commit).unwrap();
+    let merkle_tree = MerkleTree::build(&to_commit);
 
     FriLayer::new(
         &evaluation,
@@ -251,7 +358,7 @@ pub fn query_phase(
                 for layer in fri_layers {
                     // symmetric element
                     let evaluation_sym = layer.evaluation[index ^ 1].clone();
-                    let auth_path_sym = layer.merkle_tree.get_proof_by_pos(index >> 1).unwrap();
+                    let auth_path_sym = layer.merkle_tree.get_proof_by_pos(index >> 1);
                     layers_evaluations_sym.push(evaluation_sym);
                     layers_auth_paths_sym.push(auth_path_sym);
 

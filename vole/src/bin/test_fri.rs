@@ -7,6 +7,7 @@ extern crate serde_json;
 extern crate rayon;
 
 use psiri_vole::fri::{commit_poly, verify_fri_query, query_phase, FriLayer};
+use psiri_vole::utils::parallel_fft;
 use stark_platinum_prover::transcript::StoneProverTranscript;
 use stark_platinum_prover::proof::stark::StarkProof;
 use stark_platinum_prover::fri::fri_decommit::FriDecommitment;
@@ -27,7 +28,6 @@ use stark_platinum_prover::config::{Commitment, BatchedMerkleTreeBackend, Batche
 use rand::{random, Rng};
 use std::fmt::Debug;
 use std::time::Instant;
-// use serde_json;
 use rayon::current_num_threads;
 use rayon::ThreadPoolBuilder;
 use rayon::prelude::*;
@@ -56,7 +56,7 @@ fn main() {
     let num_threads = current_num_threads();
     println!("🚀 Rayon is using {} threads", num_threads);
     // Set the polynomial degree
-    let log_size: usize = 20;
+    let log_size: usize = 23;
     let log_blowup_factor: usize = 2;
     let polynomial_degree = 1 << log_size; // Degree = polynomial_degree - 1
     let domain_size = polynomial_degree; // Example domain size (must be >= polynomial_degree)
@@ -81,7 +81,8 @@ fn main() {
     in_place_bit_reverse_permute(&mut reversed_roots_of_unity_inv);
 
     let start = Instant::now();
-    let (last_value, fri_layer_list) = commit_poly(&poly, log_size, log_blowup_factor, log_size, &roots_of_unity, &roots_of_unity_inv); 
+    // let (last_value, fri_layer_list) = commit_poly(&poly, log_size, log_blowup_factor, log_size, &roots_of_unity, &roots_of_unity_inv); 
+    let poly_fft = parallel_fft(&evals, &roots_of_unity, log_size, log_blowup_factor);
 
     println!("Total time to commit: {:?}", start.elapsed());
 }

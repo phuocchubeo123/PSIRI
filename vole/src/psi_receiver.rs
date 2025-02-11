@@ -15,7 +15,6 @@ use lambdaworks_math::traits::{ByteConversion, AsBytes};
 use lambdaworks_math::fft::cpu::bit_reversing::{reverse_index, in_place_bit_reverse_permute};
 use lambdaworks_math::fft::cpu::roots_of_unity::get_powers_of_primitive_root_coset;
 use lambdaworks_math::field::fields::fft_friendly::stark_252_prime_field::Stark252PrimeField;
-use lambdaworks_crypto::merkle_tree::merkle::MerkleTree;
 use lambdaworks_crypto::merkle_tree::proof::Proof;
 use lambdaworks_crypto::fiat_shamir::is_transcript::IsTranscript;
 use stark_platinum_prover::config::{Commitment, BatchedMerkleTreeBackend};
@@ -25,7 +24,6 @@ use rayon::prelude::*;
 
 pub type F = Stark252PrimeField;
 pub type FE = FieldElement<F>;
-pub type MT = MerkleTree<BatchedMerkleTreeBackend<F>>; // MerkleTree
 
 const NUM_QUERIES: usize = 100;
 
@@ -94,7 +92,7 @@ impl OprfReceiver {
             P_new_poly: Polynomial::new(vec![FE::zero(); 1].as_slice()),
             P_new_commit: FriLayer::new(
                 vec![FE::zero(); 1].as_slice(), 
-                MT::build(vec![vec![FE::zero(); 2]; 1].as_slice()).unwrap()),
+                MerkleTree::build(vec![[FE::zero(); 2]; 1].as_slice())),
             X_new_merkle_root: [0u8; 32],
             fixed_points_num: 2 * n,
             log_fixed_points_num: log_fixed_points_num,
@@ -328,7 +326,7 @@ impl OprfReceiver {
         // Paths on Merkle Tree
         let P_new_paths: Vec<Proof<Commitment>> = iotas_consistency
             .iter()
-            .map(|&iota| self.P_new_commit.merkle_tree.get_proof_by_pos(iota>>1).unwrap())
+            .map(|&iota| self.P_new_commit.merkle_tree.get_proof_by_pos(iota>>1))
             .collect();
 
         // Send evaluations and merkle paths for Q
@@ -342,7 +340,7 @@ impl OprfReceiver {
             .collect();
         let Q_paths: Vec<Proof<Commitment>> = iotas_consistency
             .iter()
-            .map(|&iota| self.Q_fri_layers[0].merkle_tree.get_proof_by_pos(iota>>1).unwrap())
+            .map(|&iota| self.Q_fri_layers[0].merkle_tree.get_proof_by_pos(iota>>1))
             .collect();
 
         // Send everything at once 
