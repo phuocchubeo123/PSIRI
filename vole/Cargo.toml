@@ -96,9 +96,6 @@ name = "test_fri"
 name = "sender_oprf"
 
 [[bin]]
-name = "receiver_oprf"
-
-[[bin]]
 name = "test_rayon"
 
 [[bin]]

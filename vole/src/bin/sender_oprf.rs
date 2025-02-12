@@ -44,11 +44,18 @@ fn main() {
                 .required(true)
                 .index(3),
         )
+        .arg(
+            Arg::new("log_size")
+                .help("Log intersection size")
+                .required(true)
+                .index(4),
+        )
         .get_matches();
 
     let role = matches.get_one::<String>("role").unwrap();
     let address = matches.get_one::<String>("address").unwrap();
     let port = matches.get_one::<String>("port").unwrap();
+    let log_size = matches.get_one::<String>("log_size").unwrap().parse::<usize>().unwrap();
     
     ThreadPoolBuilder::new()
         .num_threads(16) // Adjust the number of threads as needed
@@ -58,7 +65,7 @@ fn main() {
     let num_threads = current_num_threads();
     println!("🚀 Rayon is using {} threads", num_threads);
 
-    let size = 1 << 20;
+    let size = 1 << log_size;
 
     if role == "sender" {
         // Sender logic

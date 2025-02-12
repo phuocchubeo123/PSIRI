@@ -148,20 +148,22 @@ pub fn get_blind_poly(poly: &Polynomial<FE>, log_size: usize, log_blowup_factor:
     let new_degree = (1 << new_log_degree) - 1;
     let mut prg = PRG::new(None, 0);
     let mut blind_coefficients_bytes = vec![[0u8; 32]; new_degree - domain_size];
+
     prg.random_32byte_block(&mut blind_coefficients_bytes);
 
     let blind_coefficients: Vec<FE> = blind_coefficients_bytes
-        .iter()
-        .map(|x| FE::from_bytes_le(x).expect("Cannot get FE from bytes"))
+        .into_par_iter()
+        .map(|x| FE::from_bytes_le(&x).expect("Cannot get FE from bytes"))
         .collect();
 
     let blind_poly = Polynomial::new(&blind_coefficients);
 
     let mut shifted_blind_coefficients: Vec<FE> = vec![FE::zero(); new_degree];
     shifted_blind_coefficients[domain_size..].copy_from_slice(&blind_coefficients);
-    for i in 0..blind_coefficients.len() {
-        shifted_blind_coefficients[i] = shifted_blind_coefficients[i] - blind_coefficients[i] + poly.coefficients[i];
-    }
+
+    shifted_blind_coefficients[..blind_coefficients.len()].par_iter_mut().enumerate().for_each(|(i, shifted)| {
+        *shifted = *shifted - blind_coefficients[i] + poly.coefficients[i];
+    });
     shifted_blind_coefficients[domain_size-1] += poly.coefficients[domain_size-1];
 
     let new_poly = Polynomial::new(&shifted_blind_coefficients);
@@ -279,14 +281,12 @@ pub fn new_fri_layer_from_vec(
     let start = Instant::now();
     let mut evals = evaluation.to_vec();
     evals = bit_reverse_permute(&evals, evals.len());
-    in_place_bit_reverse_permute(&mut evals[..fixed_points_num]);
+    let to_reverse = evals[..fixed_points_num].to_vec();
+    evals[..fixed_points_num].copy_from_slice(&bit_reverse_permute(&to_reverse, fixed_points_num));
 
-    let mut to_commit = Vec::new();
-    for chunk in evals.chunks(2) {
-        to_commit.push([chunk[0].clone(), chunk[1].clone()]);
-    }
+    let to_commit: Vec<[FE; 2]> = evals.par_chunks_exact(2).map(|chunk| [chunk[0].clone(), chunk[1].clone()]).collect();
+
     let merkle_tree = MerkleTree::build(&to_commit);
-    // println!("Time to build Merkle tree: {:?}", start.elapsed());
     FriLayer::new(
         &evals,
         merkle_tree,
