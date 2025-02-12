@@ -234,15 +234,32 @@ impl OprfReceiver {
             sender_outputs_map.insert(sender_outputs[i], true);
         }
 
-        let mut outputs: Vec<FE> = Vec::new();
-        for i in 0..self.n {
-            if sender_outputs_map.contains_key(&receiver_outputs[i]) {
-                outputs.push(values[i]);
+        // let mut outputs: Vec<FE> = Vec::new();
+        // for i in 0..self.n {
+        //     if sender_outputs_map.contains_key(&receiver_outputs[i]) {
+        //         outputs.push(values[i]);
+        //     }
+        // }
+
+        let outputs: Vec<bool> = receiver_outputs.par_iter().map(|x| {
+            let mut is_in = false;
+            if sender_outputs_map.contains_key(x) {
+                is_in = true;
             }
-        }
+            is_in
+        }).collect();
+
         println!("Table look up took {} ms", start.elapsed().as_millis());
 
+        let mut outs = Vec::new();
+        for i in (0..values.len()) {
+            if outputs[i] {
+                outs.push(values);
+            }
+        }
+
         println!("Done intersection!");
+        println!("{} out of {} elements are in the intersection!", outs.len(), values.len());
     }
 
     pub fn prepare_vole_consistency(&mut self) {

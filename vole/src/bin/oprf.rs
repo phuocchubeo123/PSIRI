@@ -140,6 +140,7 @@ fn main() {
         let mut outputs = vec![FE::zero(); size];
         oprf.receive(&mut channel, &data);
         println!("Whole protocol time: {:?}", start_protocol.elapsed());
+
     } else {
         eprintln!("Invalid role. Use 'sender' or 'receiver'.");
         std::process::exit(1);
