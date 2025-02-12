@@ -1,7 +1,7 @@
 use crate::fri::*;
 use crate::comm_channel::CommunicationChannel;  
 use crate::vole_triple::{VoleTriple, PrimalLPNParameterFp61};
-use crate::utils::parallel_fft;
+use crate::utils::{parallel_fft, parallel_ifft};
 use psiri_aes::prg::PRG;
 use psiri_aes::prp::FieldPRP;
 use psiri_okvs::types::{Okvs, Pair};
