@@ -76,7 +76,7 @@ impl CommunicationChannel for TcpChannel {
     /// Sends a vector of STARK-252 field elements over the TCP channel.
     fn send_stark252(&mut self, elements: &[FE]) -> std::io::Result<()> {
         // Define the chunk size (in bytes). For example, 32 elements (32 bytes each) per chunk.
-        const CHUNK_SIZE: usize = 1; // Adjust this as needed
+        const CHUNK_SIZE: usize = 16; // Adjust this as needed
 
         // Serialize all elements into a vector
         let mut serialized_data = Vec::with_capacity(elements.len() * 32);
@@ -103,7 +103,7 @@ impl CommunicationChannel for TcpChannel {
 
     fn receive_stark252(&mut self, count: usize) -> std::io::Result<Vec<FE>> {
         // Define the chunk size (in bytes)
-        const CHUNK_SIZE: usize = 1; // Adjust this as needed
+        const CHUNK_SIZE: usize = 16; // Adjust this as needed
 
         // Read the total size prefix
         let mut size_buf = [0u8; 8];
