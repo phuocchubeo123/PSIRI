@@ -285,8 +285,6 @@ pub fn new_fri_layer_from_vec(
     for chunk in evals.chunks(2) {
         to_commit.push([chunk[0].clone(), chunk[1].clone()]);
     }
-    println!("Time to bit reverse: {:?}", start.elapsed());
-
     let merkle_tree = MerkleTree::build(&to_commit);
     // println!("Time to build Merkle tree: {:?}", start.elapsed());
     FriLayer::new(
