@@ -13,7 +13,7 @@ pub type F = Stark252PrimeField;
 pub type FE = FieldElement<F>;
 
 fn main() {
-    let size = 1_000_000;    
+    let size = 1 << 20;    
 
     let mut inputs: Vec<Pair<FE, FE>> = Vec::with_capacity(size);
     for i in 0..size {

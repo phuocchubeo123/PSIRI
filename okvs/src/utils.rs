@@ -7,6 +7,8 @@ use lambdaworks_math::field::element::FieldElement;
 use lambdaworks_math::unsigned_integer::element::UnsignedInteger;
 use rand::random;
 use std::time::Instant; 
+use rayon::prelude::*;
+use sp_core::sp_std::cmp::min;
 
 pub type F = Stark252PrimeField;
 pub type FE = FieldElement<F>;
@@ -66,31 +68,48 @@ pub fn simple_gauss(
         }
     }
 
+    println!("Time to convert to FE bands: {:?}", start.elapsed());
+
+    let mut first_nonzero = vec![band_width; rows];
+
     for i in 0..rows {
         let y_i = y[i].clone();
 
-        let mut first_nonzero = band_width;
         for j in 0..band_width {
             if bands_FE[i][j] != FE::zero() {
-                first_nonzero = j;
+                first_nonzero[i] = j;
                 break;
             }
         }
 
-        if first_nonzero == band_width {
+        if first_nonzero[i] == band_width {
             return Err(Error::ZeroRow(i));
         }
 
-        let lead_inv = bands_FE[i][first_nonzero].inv().unwrap();
+        pivot[i] = first_nonzero[i] + start_pos[i];
 
-        for j in first_nonzero..band_width {
+        // Scan first to see if we need to do inverse now
+        let mut cnt = 0;
+        for j in (i + 1)..rows {
+            if start_pos[j] > pivot[i] {
+                break;
+            }
+            cnt += 1;
+        }
+
+        if cnt == 0 {
+            continue;
+        }
+
+        let lead_inv = bands_FE[i][first_nonzero[i]].inv().unwrap();
+
+        for j in first_nonzero[i]..band_width {
             bands_FE[i][j] = bands_FE[i][j] * lead_inv;
         }
         y[i] = y[i] * lead_inv;
 
-        // println!("Current band: {:?}", bands_FE[i]);
 
-        pivot[i] = first_nonzero + start_pos[i];
+        let bands_FE_i = &bands_FE[i].to_vec();
 
         for j in (i + 1)..rows {
             if start_pos[j] > pivot[i] {
@@ -99,20 +118,21 @@ pub fn simple_gauss(
             let offset = pivot[i] - start_pos[j];
             if bands_FE[j][pivot[i] - start_pos[j]] != FE::zero() {
                 let lead = bands_FE[j][offset];
-                for k in (0..(band_width-first_nonzero-7)).step_by(8) {
-                    bands_FE[j][k + offset] = bands_FE[j][k + offset] - lead * bands_FE[i][k + first_nonzero];
-                    bands_FE[j][k + offset + 1] = bands_FE[j][k + offset + 1] - lead * bands_FE[i][k + first_nonzero + 1];
-                    bands_FE[j][k + offset + 2] = bands_FE[j][k + offset + 2] - lead * bands_FE[i][k + first_nonzero + 2];
-                    bands_FE[j][k + offset + 3] = bands_FE[j][k + offset + 3] - lead * bands_FE[i][k + first_nonzero + 3];
-                    bands_FE[j][k + offset + 4] = bands_FE[j][k + offset + 4] - lead * bands_FE[i][k + first_nonzero + 4];
-                    bands_FE[j][k + offset + 5] = bands_FE[j][k + offset + 5] - lead * bands_FE[i][k + first_nonzero + 5];
-                    bands_FE[j][k + offset + 6] = bands_FE[j][k + offset + 6] - lead * bands_FE[i][k + first_nonzero + 6];
-                    bands_FE[j][k + offset + 7] = bands_FE[j][k + offset + 7] - lead * bands_FE[i][k + first_nonzero + 7];
+
+                for k in (0..(band_width-first_nonzero[i]-7)).step_by(8) {
+                    bands_FE[j][k + offset] = bands_FE[j][k + offset] - lead * bands_FE[i][k + first_nonzero[i]];
+                    bands_FE[j][k + offset + 1] = bands_FE[j][k + offset + 1] - lead * bands_FE[i][k + first_nonzero[i] + 1];
+                    bands_FE[j][k + offset + 2] = bands_FE[j][k + offset + 2] - lead * bands_FE[i][k + first_nonzero[i] + 2];
+                    bands_FE[j][k + offset + 3] = bands_FE[j][k + offset + 3] - lead * bands_FE[i][k + first_nonzero[i] + 3];
+                    bands_FE[j][k + offset + 4] = bands_FE[j][k + offset + 4] - lead * bands_FE[i][k + first_nonzero[i] + 4];
+                    bands_FE[j][k + offset + 5] = bands_FE[j][k + offset + 5] - lead * bands_FE[i][k + first_nonzero[i] + 5];
+                    bands_FE[j][k + offset + 6] = bands_FE[j][k + offset + 6] - lead * bands_FE[i][k + first_nonzero[i] + 6];
+                    bands_FE[j][k + offset + 7] = bands_FE[j][k + offset + 7] - lead * bands_FE[i][k + first_nonzero[i] + 7];
                 }
                 
-                let remain = (band_width - first_nonzero) % 8;
-                for k in (band_width - first_nonzero - remain)..(band_width - first_nonzero) {
-                    bands_FE[j][k + offset] = bands_FE[j][k + offset] - lead * bands_FE[i][k + first_nonzero];
+                let remain = (band_width - first_nonzero[i]) % 8;
+                for k in (band_width - first_nonzero[i] - remain)..(band_width - first_nonzero[i]) {
+                    bands_FE[j][k + offset] = bands_FE[j][k + offset] - lead * bands_FE[i][k + first_nonzero[i]];
                 }
 
                 y[j] = y[j] - lead * y[i];
@@ -120,16 +140,35 @@ pub fn simple_gauss(
         }
     }
 
+    // clean up rows with non_unit leading coeffiicients
+    bands_FE.par_iter_mut().zip(y.par_iter_mut()).enumerate().for_each(|(i, (band_i, y_i))| {
+        let lead = band_i[first_nonzero[i]];
+        if lead != FE::one() {
+            let lead_inv = lead.inv().unwrap();
+
+            for j in first_nonzero[i]..band_width {
+                band_i[j] = band_i[j] * lead_inv;
+            }
+            *y_i = *y_i * lead_inv;
+        }
+    });
+
     // back substitution
+    let start = Instant::now();
+
     let mut x = vec![FE::zero(); cols];
     for i in (0..rows).rev() {
         let mut res = y[i];
-        // println!("Solving: {:?}", x[pivot[i]]);
         for j in 0..band_width {
+            if (x[start_pos[i] + j] == FE::zero()) || (bands_FE[i][j] == FE::zero()) {
+                continue;
+            }
             res = res - bands_FE[i][j] * x[start_pos[i]+j];
         }
         x[pivot[i]] = res;
     }
+
+    println!("Time to back substitution: {:?}", start.elapsed());
 
     Ok(x)
 }
