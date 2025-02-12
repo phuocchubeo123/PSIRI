@@ -56,6 +56,12 @@ fn main() {
                 .required(true)
                 .index(5)
         )
+        .arg(
+            Arg::new("params")
+                .help("Choose LPN Param")
+                .required(true)
+                .index(6)
+        )
         .get_matches();
 
     let role = matches.get_one::<String>("role").unwrap();
@@ -63,7 +69,7 @@ fn main() {
     let port = matches.get_one::<String>("port").unwrap();
     let log_size = matches.get_one::<String>("log_size").unwrap().parse::<usize>().unwrap();
     let num_threads = matches.get_one::<String>("threads").unwrap().parse::<usize>().unwrap();
-
+    let params_idx = matches.get_one::<String>("params").unwrap().parse::<usize>().unwrap();
     
     ThreadPoolBuilder::new()
         .num_threads(num_threads) // Adjust the number of threads as needed
@@ -73,6 +79,12 @@ fn main() {
     println!("🚀 Rayon is using {} threads", num_threads);
 
     let size = 1 << log_size;
+    let mut param = MILLION_LPN;
+    if params_idx == 0 {
+        param = MILLION_LPN;
+    } else if params_idx == 1 {
+        param = FOUR_MILLION_LPN;
+    }
 
     if role == "sender" {
         // Sender logic
@@ -81,7 +93,7 @@ fn main() {
             .expect("Failed to connect to receiver");
         let mut channel = TcpChannel::new(stream);
 
-        let mut oprf = OprfSender::new(&mut channel, size, true, FOUR_MILLION_LPN);
+        let mut oprf = OprfSender::new(&mut channel, size, true, param);
 
         let data = channel.receive_stark252(size).expect("Failed to receive data from receiver");
 
@@ -106,7 +118,7 @@ fn main() {
         let start_protocol = Instant::now();
 
         let start = Instant::now();
-        let mut oprf = OprfReceiver::new(&mut channel, size, true, FOUR_MILLION_LPN);
+        let mut oprf = OprfReceiver::new(&mut channel, size, true, param);
         println!("Initiate protocol took {:?}", start.elapsed());
 
         let data = (0..size).map(|_| rand_field_element()).collect::<Vec<FE>>();

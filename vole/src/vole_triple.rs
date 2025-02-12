@@ -142,7 +142,7 @@ pub const MILLION_LPN: PrimalLPNParameterFp61 = PrimalLPNParameterFp61 {
 pub const FOUR_MILLION_LPN: PrimalLPNParameterFp61 = PrimalLPNParameterFp61 {
     n: 2701312,
     t: 1319,
-    k: 12000,
+    k: 130000,
     log_bin_sz: 11,
     n_pre: 160512,
     t_pre: 2508,
