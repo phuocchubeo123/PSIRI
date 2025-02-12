@@ -125,10 +125,10 @@ pub const WOLVERINE_LPN: PrimalLPNParameterFp61 = PrimalLPNParameterFp61 {
 
 // Phuoc test instance
 pub const PHUOC_LPN: PrimalLPNParameterFp61 = PrimalLPNParameterFp61 {
-    n: 337664,
+    n: 675328,
     t: 1319,
     k: 50000,
-    log_bin_sz: 8,
+    log_bin_sz: 9,
     n_pre: 160512,
     t_pre: 2508,
     k_pre: 19870,
