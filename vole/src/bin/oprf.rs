@@ -97,9 +97,9 @@ fn main() {
             .expect("Failed to connect to receiver");
         let mut channel = TcpChannel::new(stream);
 
-        let mut oprf = OprfSender::new(&mut channel, size, true, param);
-
         let data = channel.receive_stark252(size).expect("Failed to receive data from receiver");
+
+        let mut oprf = OprfSender::new(&mut channel, size, true, param);
 
         let start = Instant::now();
         oprf.commit_X(&data);
@@ -119,6 +119,10 @@ fn main() {
         let (stream, _) = listener.accept().expect("Failed to accept connection");
         let mut channel = TcpChannel::new(stream);
 
+        // Send data to Sender for test
+        channel.send_stark252(&data).expect("Failed to send data to sender");
+
+
         let start_protocol = Instant::now();
 
         let start = Instant::now();
@@ -126,9 +130,6 @@ fn main() {
         println!("Initiate protocol took {:?}", start.elapsed());
 
         let data = (0..size).map(|_| rand_field_element()).collect::<Vec<FE>>();
-
-        // Send data to Sender for test
-        channel.send_stark252(&data).expect("Failed to send data to sender");
 
         let start = Instant::now();
         oprf.commit_P(&data);
