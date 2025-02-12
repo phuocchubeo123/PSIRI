@@ -137,14 +137,12 @@ impl OprfReceiver {
 
     pub fn send_P_commit<IO: CommunicationChannel>(&mut self, io: &mut IO) {
         self.transcript.append_bytes(&self.P_new_commit.merkle_tree.root);
-        println!("Current transcript: {:?}", self.transcript.sample(4));
         io.send_block::<32>(&[self.P_new_commit.merkle_tree.root]);
     }
 
     pub fn receive_X_commit<IO: CommunicationChannel>(&mut self, io: &mut IO) {
         self.X_new_merkle_root = io.receive_block::<32>()[0];
         self.transcript.append_bytes(&self.X_new_merkle_root);
-        println!("Current transcript: {:?}", self.transcript.sample(4));
     }
 
     pub fn receive<IO: CommunicationChannel>(&mut self, io: &mut IO, values: &[FE]) {
@@ -153,7 +151,6 @@ impl OprfReceiver {
         if self.malicious {
             hws = io.receive_stark252(1).expect("Failed to receive H(ws) from the sender")[0];
             self.transcript.append_bytes(&hws.to_bytes_le());
-            println!("Current transcript: {:?}", self.transcript.sample(4));
         }
 
         // Running Vole
@@ -177,7 +174,6 @@ impl OprfReceiver {
             prg.random_stark252_elements(&mut FE_vec);
             wr = FE_vec[0];
             self.transcript.append_bytes(&wr.to_bytes_le());
-            println!("Current transcript: {:?}", self.transcript.sample(4));
 
             let start = Instant::now();
             io.send_stark252(&[wr]).expect("Failed to send wr to the sender");
@@ -192,7 +188,6 @@ impl OprfReceiver {
 
             w = ws + wr;
             self.transcript.append_bytes(&w.to_bytes_le());
-            println!("Current transcript: {:?}", self.transcript.sample(4));
         }
         
         println!("Sending these small values take {} ms?", start.elapsed().as_millis());
@@ -268,7 +263,6 @@ impl OprfReceiver {
 
         self.transcript.append_bytes(&self.Q_last_value.to_bytes_le());
         self.transcript.append_bytes(&Q_merkle_roots[0]);  
-        println!("Current transcript: {:?}", self.transcript.sample(4));
 
         // Receives iotas from Sender
         let iotas: Vec<usize> = (0..NUM_QUERIES).map(|_| {
@@ -277,7 +271,6 @@ impl OprfReceiver {
             self.transcript.append_bytes(&iota_bytes);
             iota as usize
         }).collect();
-        println!("Current transcript: {:?}", self.transcript.sample(4));
 
         // Open commitments on P_blind
         let Q_evaluations: Vec<FE> = iotas
@@ -300,7 +293,6 @@ impl OprfReceiver {
             self.transcript.append_bytes(&iota_bytes);
             iota as usize
         }).collect();
-        println!("Current transcript: {:?}", self.transcript.sample(4));
         let iota_consistency_roots_of_unity: Vec<FE> = iotas_consistency
             .iter()
             .map(|&iota| self.roots_of_unity[reverse_index(iota, self.roots_of_unity.len() as u64)])
@@ -357,7 +349,6 @@ impl OprfReceiver {
     pub fn receive_output_consistency<IO: CommunicationChannel>(&mut self, io: &mut IO) -> Vec<[u8; 32]> {
         let S_new_merkle_root = io.receive_block::<32>()[0];
         self.transcript.append_bytes(&S_new_merkle_root);
-        println!("Current transcript: {:?}", self.transcript.sample(4));
 
         // Generate random t to create the degree test
         let mut hasher = Keccak256::new();
@@ -372,7 +363,6 @@ impl OprfReceiver {
 
         self.transcript.append_bytes(&T_new_last_value.to_bytes_le());
         self.transcript.append_bytes(&T_new_merkle_roots[0]);
-        println!("Current transcript: {:?}", self.transcript.sample(4));
 
         // Generate iotas for the degree test
         let iotas: Vec<usize> = (0..NUM_QUERIES).map(|_| {
@@ -381,7 +371,6 @@ impl OprfReceiver {
             self.transcript.append_bytes(&iota_bytes);
             iota as usize
         }).collect();
-        println!("Current transcript: {:?}", self.transcript.sample(4));
 
         let T_new_evaluations = io.receive_stark252(NUM_QUERIES).expect("Cannot receive evaluations of T_new");
         // Receive back the decommitments of T_new
@@ -410,7 +399,6 @@ impl OprfReceiver {
             self.transcript.append_bytes(&iota_bytes);
             iota as usize
         }).collect();
-        println!("Current transcript: {:?}", self.transcript.sample(4));
 
         // Receive evaluations on roots of unity of S_new and check with commitment
         let S_new_evaluations = io.receive_stark252(NUM_QUERIES).expect("Cannot receive evaluations of S_new");

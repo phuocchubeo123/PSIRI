@@ -206,19 +206,15 @@ pub fn commit_phase(
     let mut current_poly = p_0.clone();
     let mut current_fixed_points_num = 1 << log_fixed_points_num;
 
-    let start = Instant::now();
     let mut current_evaluations = parallel_fft(&current_poly.coefficients, &roots_of_unity, log_size, log_blowup_factor);
-    println!("Time to compute FFT: {:?}", start.elapsed());
 
     let mut current_size = current_evaluations.len();
 
     let mut new_evaluations = vec![FE::zero(); current_size];
 
     for layer in 0..log_size {
-        println!("Time at the beginning of the loop: {:?}", start.elapsed());
         // Commit the current folded poly (also include the original poly in the first step)
         current_layer = new_fri_layer_from_vec(&current_evaluations[..current_size], current_fixed_points_num);
-        println!("Time to create new fri layer: {:?}", start.elapsed());
 
         let new_data = &current_layer.merkle_tree.root;
 
@@ -262,11 +258,7 @@ pub fn commit_phase(
         // println!("Time to fold: {:?}", start.elapsed());
 
         current_evaluations[..current_size].copy_from_slice(&new_evaluations[..current_size]);
-
-        println!("Time to copy: {:?}", start.elapsed());
     }
-
-    println!("Time until here: {:?}", start.elapsed());
 
     // <<<< Receive challenge: 𝜁ₙ₋₁
     let zeta = transcript.sample_field_element();
@@ -275,8 +267,6 @@ pub fn commit_phase(
 
     // >>>> Send value: pₙ
     transcript.append_field_element(&last_value);
-
-    println!("Time until return: {:?}", start.elapsed());
 
     (last_value, fri_layer_list)
 }

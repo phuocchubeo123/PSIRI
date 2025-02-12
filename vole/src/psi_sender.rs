@@ -146,12 +146,10 @@ impl OprfSender {
         // Receive commitment of P_new
         self.P_new_merkle_root = io.receive_block::<32>()[0];
         self.transcript.append_bytes(&self.P_new_merkle_root);
-        println!("Current transcript: {:?}", self.transcript.sample(4));
     }
 
     pub fn send_X_commit<IO: CommunicationChannel>(&mut self, io: &mut IO) {
         self.transcript.append_bytes(&self.X_new_commit.merkle_tree.root);
-        println!("Current transcript: {:?}", self.transcript.sample(4));
         io.send_block::<32>(&[self.X_new_commit.merkle_tree.root]);
     }
 
@@ -171,7 +169,6 @@ impl OprfSender {
             io.send_stark252(&[hash_buf]).expect("Failed to send H(ws) to the receiver");
 
             self.transcript.append_bytes(&hash_buf.to_bytes_le());
-            println!("Current transcript: {:?}", self.transcript.sample(4));
         }
 
         // Running Vole
@@ -187,9 +184,7 @@ impl OprfSender {
             self.w = ws + wr;
             io.send_stark252(&[ws]).expect("Failed to send ws to the receiver");
             self.transcript.append_bytes(&wr.to_bytes_le());
-            println!("Current transcript: {:?}", self.transcript.sample(4));
             self.transcript.append_bytes(&self.w.to_bytes_le());
-            println!("Current transcript: {:?}", self.transcript.sample(4));
         }
 
         let start = Instant::now();
@@ -335,9 +330,9 @@ impl OprfSender {
     }
 
     pub fn send_output_consistency<IO: CommunicationChannel>(&mut self, io: &mut IO) {
+        let start = Instant::now();
         io.send_block::<32>(&[self.S_new_commit.merkle_tree.root]);
         self.transcript.append_bytes(&self.S_new_commit.merkle_tree.root);
-        println!("Current transcript: {:?}", self.transcript.sample(4));    
 
         let T_new_merkle_roots: Vec<[u8; 32]> = self.T_new_fri_layers
             .iter()
@@ -348,7 +343,6 @@ impl OprfSender {
 
         self.transcript.append_bytes(&self.T_new_last_value.to_bytes_le());
         self.transcript.append_bytes(&T_new_merkle_roots[0]);
-        println!("Current transcript: {:?}", self.transcript.sample(4));
 
         let iotas: Vec<usize> = (0..NUM_QUERIES).map(|_| {
             let iota_bytes = self.transcript.sample(8);
@@ -356,7 +350,6 @@ impl OprfSender {
             self.transcript.append_bytes(&iota_bytes);
             iota as usize
         }).collect();
-        println!("Current transcript: {:?}", self.transcript.sample(4));
 
         let T_new_evaluations: Vec<FE> = iotas
             .iter()
@@ -374,7 +367,6 @@ impl OprfSender {
             self.transcript.append_bytes(&iota_bytes);
             iota as usize
         }).collect();
-        println!("Current transcript: {:?}", self.transcript.sample(4));
 
         // Send evaluations and merkle paths for S_new
         let S_new_evaluations: Vec<FE> = iotas_consistency
@@ -409,6 +401,9 @@ impl OprfSender {
             .map(|&iota| self.X_new_commit.merkle_tree.get_proof_by_pos(iota>>1))
             .collect();
         send_merkle_path(io, &X_new_paths);
+
+        println!("Current time: {:?}", start.elapsed());
+
 
         // Send evaluation and merkle paths for T_new
         let T_new_evaluations: Vec<FE> = iotas_consistency
@@ -453,7 +448,6 @@ impl OprfSender {
 
         self.transcript.append_bytes(&Q_last_value.to_bytes_le());
         self.transcript.append_bytes(&Q_merkle_root);
-        println!("Current transcript: {:?}", self.transcript.sample(4));
 
         let iotas: Vec<usize> = (0..NUM_QUERIES).map(|_| {
             let iota_bytes = self.transcript.sample(8);
@@ -461,7 +455,6 @@ impl OprfSender {
             self.transcript.append_bytes(&iota_bytes);
             iota as usize
         }).collect();
-        println!("Current transcript: {:?}", self.transcript.sample(4));
         // Receive evaluations
         let Q_evaluations = io.receive_stark252(NUM_QUERIES).expect("Cannot receive evaluations of Q");
         // Receive back the decommitments of P
@@ -490,7 +483,6 @@ impl OprfSender {
             self.transcript.append_bytes(&iota_bytes);
             iota as usize
         }).collect();
-        println!("Current transcript: {:?}", self.transcript.sample(4));
         let iota_consistency_roots_of_unity = iotas_consistency
             .iter()
             .map(|&iota| self.roots_of_unity[reverse_index(iota, self.roots_of_unity.len() as u64)])
