@@ -30,11 +30,15 @@ pub fn rand_field_element() -> FE {
     FE::new(rand_big)
 }
 
+pub fn bit_reverse_permute(x: &[FE], size: usize) -> Vec<FE> {
+    (0..size).into_par_iter().map(|i| x[reverse_index(i, size as u64)]).collect::<Vec<_>>()
+}
+
 pub fn parallel_fft(coefs: &[FE], roots_of_unity: &[FE], log_size: usize, log_blowup_factor: usize) -> Vec<FE> {
     let size = 1 << (log_size + log_blowup_factor);
     let mut res = vec![FE::zero(); size];
     res[..coefs.len()].copy_from_slice(coefs);
-    in_place_bit_reverse_permute(&mut res);
+    res = bit_reverse_permute(&res, size);
 
     let mut stride = 1;
     let mut p: usize = log_size + log_blowup_factor - 1;
@@ -43,16 +47,10 @@ pub fn parallel_fft(coefs: &[FE], roots_of_unity: &[FE], log_size: usize, log_bl
     while stride < size {
         let num_threads = current_num_threads();
         let mut chunk_size = size / num_threads;
-        println!("chunk size: {}", chunk_size);
         chunk_size = (chunk_size + 2*stride - 1) / (2*stride) * 2*stride;
-        println!("chunk size: {}", chunk_size);
 
         if 4*stride > chunk_size {
-            // let start = Instant::now();
-
             let mut small_chunk_size = stride / num_threads;
-            // small_chunk_size = (small_chunk_size + 2*stride - 1) / (2*stride) * 2*stride;
-            println!("small chunk size: {}, {}", small_chunk_size, stride);
             for start in (0..size).step_by(2*stride) {
                 let (left, right) = res[start..start+2*stride].split_at_mut(stride);
                 left.par_chunks_mut(small_chunk_size)
@@ -68,10 +66,8 @@ pub fn parallel_fft(coefs: &[FE], roots_of_unity: &[FE], log_size: usize, log_bl
                         }
                     });
             }
-            // println!("Time for case 1: {:?}", start.elapsed());
 
         } else {
-            // let start = Instant::now();
             res.par_chunks_mut(chunk_size)
                 .enumerate()
                 .for_each(|(i, chunk)| {
@@ -85,7 +81,6 @@ pub fn parallel_fft(coefs: &[FE], roots_of_unity: &[FE], log_size: usize, log_bl
                         }
                     });
                 });
-            // println!("Time for case 2: {:?}", start.elapsed());
         }
 
         stride *= 2;
@@ -94,127 +89,6 @@ pub fn parallel_fft(coefs: &[FE], roots_of_unity: &[FE], log_size: usize, log_bl
 
     res
 }
-
-// pub fn parallel_fft(coefs: &[FE], roots_of_unity: &[FE], log_size: usize, log_blowup_factor: usize) -> Vec<FE> {
-//     let size = 1 << (log_size + log_blowup_factor);
-//     let mut res = vec![FE::zero(); size];
-//     res[..coefs.len()].copy_from_slice(coefs);
-//     in_place_bit_reverse_permute(&mut res);
-
-//     let mut stride = 1;
-//     let mut p: usize = log_size + log_blowup_factor - 1;
-//     let mask = size - 1;
-
-//     let num_threads = current_num_threads();
-//     let chunk_size = size / num_threads;
-
-
-//     let new_left: Vec<Arc<Mutex<Vec<FE>>>> = (0..num_threads)
-//         .map(|_| Arc::new(Mutex::new(Vec::new())))
-//         .collect(); 
-//     let new_right: Vec<Arc<Mutex<Vec<FE>>>> = (0..num_threads)
-//         .map(|_| Arc::new(Mutex::new(Vec::new())))
-//         .collect();
-
-
-//     while stride < size {
-//         if 2*stride > num_threads {
-//             let small_chunk_size = stride / num_threads;
-//             let remainder = stride % num_threads;
-//             for start in (0..size).step_by(2*stride) {
-//                 let (left, right) = res[start..start+2*stride].split_at_mut(stride);
-
-//                 (0..num_threads).into_par_iter()
-//                     .for_each(|i| {
-//                         let start_idx = i * small_chunk_size;
-//                         let mut end_idx = 0;
-//                         if i == num_threads - 1 {
-//                             end_idx = stride;
-//                         } else {
-//                             end_idx = start_idx + small_chunk_size;
-//                         }
-
-//                         let mut left_lock = new_left[i].lock().unwrap();
-//                         let mut right_lock = new_right[i].lock().unwrap();
-
-//                         *left_lock = Vec::with_capacity(end_idx - start_idx);
-//                         *right_lock = Vec::with_capacity(end_idx - start_idx);
-
-//                         for j in 0..(end_idx - start_idx) {
-//                             let zp = roots_of_unity[((start_idx + j) << p) & mask];
-//                             let a = left[start_idx + j];
-//                             let b = right[start_idx + j];
-//                             left_lock.push(a + zp * b);
-//                             right_lock.push(a - zp * b);
-//                         }
-//                     });
-                
-//                 (0..num_threads).into_iter()
-//                     .for_each(|i| {
-//                         let start_idx = i * small_chunk_size;
-//                         let mut end_idx = 0;
-//                         if i == num_threads - 1 {
-//                             end_idx = stride;
-//                         } else {
-//                             end_idx = start_idx + small_chunk_size;
-//                         }
-//                         left[start_idx..end_idx].copy_from_slice(&new_left[i].lock().unwrap());
-//                         right[start_idx..end_idx].copy_from_slice(&new_right[i].lock().unwrap());
-//                     });
-//             }
-
-//         } else {
-//             // let start = Instant::now();
-//             let new_chunk_size = (chunk_size + 2*stride - 1) / (2*stride) * 2*stride;
-//             // println!("new chunk size: {}, {}", new_chunk_size, chunk_size);
-
-//             (0..(size/new_chunk_size)).into_par_iter()
-//                 .for_each(|i| {
-//                     let start_idx = i * new_chunk_size;
-//                     let mut end_idx = 0;
-//                     if i == num_threads - 1 {
-//                         end_idx = size;
-//                     } else {
-//                         end_idx = start_idx + new_chunk_size;
-//                     }
-
-//                     let mut left_lock = new_left[i].lock().unwrap();
-//                     let mut right_lock = new_right[i].lock().unwrap();
-
-//                     *left_lock = vec![FE::zero(); end_idx - start_idx];
-
-//                     for start in (start_idx..end_idx).step_by(2*stride) {
-//                         for j in 0..stride {
-//                             let zp = roots_of_unity[((start + j) << p) & mask];
-//                             let a = res[start + j];
-//                             let b = res[start + j + stride];
-//                             left_lock[start + j - start_idx] = (a + zp * b);
-//                             left_lock[start + j + stride - start_idx] = (a - zp * b);
-//                         }
-//                     }
-//                 });
-
-//             let start = Instant::now();
-//             (0..(size/new_chunk_size)).into_iter()
-//                 .for_each(|i| {
-//                     let start_idx = i * new_chunk_size;
-//                     let mut end_idx = 0;
-//                     if i == num_threads - 1 {
-//                         end_idx = size;
-//                     } else {
-//                         end_idx = start_idx + new_chunk_size;
-//                     }
-//                     res[start_idx..end_idx].copy_from_slice(&new_left[i].lock().unwrap());
-//                 });
-//             println!("Copy time: {:?}", start.elapsed());
-//         }
-
-//         stride *= 2;
-//         p -= 1;
-//     }
-
-//     res
-// }
 
 pub fn hash_leaves(unhashed_leaves: &[[FE; 2]]) -> Vec<[u8; 32]> {
     let num_threads = current_num_threads();

@@ -1,4 +1,4 @@
-use crate::utils::{rand_field_element, parallel_fft, hash_leaves, sibling_index, parent_index};
+use crate::utils::*;
 use crate::comm_channel::CommunicationChannel;
 use psiri_aes::prg::{PRG};
 use lambdaworks_math::polynomial;
@@ -288,7 +288,7 @@ pub fn new_fri_layer_from_vec(
 {
     let start = Instant::now();
     let mut evals = evaluation.to_vec();
-    in_place_bit_reverse_permute(&mut evals);
+    evals = bit_reverse_permute(&evals, evals.len());
     in_place_bit_reverse_permute(&mut evals[..fixed_points_num]);
 
     let mut to_commit = Vec::new();
