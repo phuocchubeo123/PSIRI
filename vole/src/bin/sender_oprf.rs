@@ -51,7 +51,7 @@ fn main() {
     let port = matches.get_one::<String>("port").unwrap();
     
     ThreadPoolBuilder::new()
-        .num_threads(32) // Adjust the number of threads as needed
+        .num_threads(16) // Adjust the number of threads as needed
         .build_global()
         .unwrap();
     

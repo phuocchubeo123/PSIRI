@@ -1,5 +1,5 @@
 use crate::fri::*;
-use crate::utils::{rand_field_element, parallel_fft};
+use crate::utils::{rand_field_element, parallel_fft, parallel_ifft};
 use crate::comm_channel::CommunicationChannel;
 use crate::vole_triple::{VoleTriple, PrimalLPNParameterFp61};
 use psiri_aes::prg::PRG;
@@ -49,6 +49,7 @@ pub struct OprfSender {
     log_fixed_points_num: usize,
     roots_of_unity: Vec<FE>,
     roots_of_unity_inv: Vec<FE>,
+    small_roots_of_unity_inv: Vec<FE>,
     transcript: StoneProverTranscript,
 }
 
@@ -85,6 +86,8 @@ impl OprfSender {
         let mut roots_of_unity_inv = roots_of_unity.clone();
         roots_of_unity_inv[1..].reverse();
 
+        let small_roots_of_unity_inv: Vec<FE> = (0..fixed_points_num).into_par_iter().map(|i| roots_of_unity_inv[i*4]).collect();
+
         for i in 0..roots_of_unity_inv.len() {
             assert_eq!(roots_of_unity_inv[i] * roots_of_unity[i], FE::one(), "wrong inv of roots of unity");
         }
@@ -117,6 +120,7 @@ impl OprfSender {
             log_fixed_points_num: log_fixed_points_num,
             roots_of_unity: roots_of_unity,
             roots_of_unity_inv: roots_of_unity_inv,
+            small_roots_of_unity_inv: small_roots_of_unity_inv,
             transcript: transcript,
         }
     }
@@ -130,7 +134,9 @@ impl OprfSender {
             X.push(rand_field_element());
         }
         
-        let X_poly = Polynomial::interpolate_fft::<F>(&X).unwrap();
+        // let X_poly = Polynomial::interpolate_fft::<F>(&X).unwrap();
+        let X_poly_coeffs = parallel_ifft(&X, &self.small_roots_of_unity_inv, self.log_fixed_points_num, 0);
+        let X_poly = Polynomial::new(&X_poly_coeffs);
 
         // Start committing S
         assert_eq!(X.len(), 1 << self.log_fixed_points_num, "Number of values should be a power of 2"); 
@@ -234,7 +240,9 @@ impl OprfSender {
             S.push(o[i]);   
         }
 
-        let S_poly = Polynomial::interpolate_fft::<F>(&S).unwrap();
+        // let S_poly = Polynomial::interpolate_fft::<F>(&S).unwrap();
+        let S_poly_coeffs = parallel_ifft(&S, &self.small_roots_of_unity_inv, self.log_fixed_points_num, 0);
+        let S_poly = Polynomial::new(&S_poly_coeffs);
         assert_eq!(S_poly.coefficients.len(), 1 << self.log_fixed_points_num, "Number of values should be a power of 2");
 
         println!("End of interpolation: {:?}", start.elapsed());
@@ -402,8 +410,6 @@ impl OprfSender {
             .collect();
         send_merkle_path(io, &X_new_paths);
 
-        println!("Current time: {:?}", start.elapsed());
-
 
         // Send evaluation and merkle paths for T_new
         let T_new_evaluations: Vec<FE> = iotas_consistency
@@ -417,19 +423,17 @@ impl OprfSender {
             .collect();
         io.send_stark252(&T_new_evaluations_sym).expect("Cannot send sym evaluations of T_new");
 
-        let start = Instant::now();
         let T_new_paths: Vec<Proof<Commitment>> = iotas_consistency
             .par_iter()
             .map(|&iota| self.T_new_fri_layers[0].merkle_tree.get_proof_by_pos(iota>>1))
             .collect();
-        println!("Time to prepare paths for T_new: {:?}", start.elapsed());
-        let start = Instant::now();
         send_merkle_path(io, &T_new_paths);
-        println!("Time to send paths for T_new: {:?}", start.elapsed());
 
 
         // Send the outputs and the verify path
+        // Takes 1 second to send a million members
         io.send_block::<32>(&self.outputs_byte);
+
         // Try to get the path from outputs_byte to merkle_root of S_new
         let outputs_byte_path = self.S_new_commit.merkle_tree.get_proof_by_pos(0).merkle_path;
 
@@ -490,8 +494,16 @@ impl OprfSender {
 
 
         // Compute evaluations on A and b while receiver is preparing degree check on Q
-        let b_poly = Polynomial::interpolate_fft::<F>(&self.b).unwrap();
-        let A_poly = Polynomial::interpolate_fft::<F>(A).unwrap();
+        let start = Instant::now();
+
+        let b_poly_coeffs = parallel_ifft(&self.b, &self.small_roots_of_unity_inv, self.log_fixed_points_num, 0);
+        let b_poly = Polynomial::new(&b_poly_coeffs);
+        let A_poly_coeffs = parallel_ifft(&A, &self.small_roots_of_unity_inv, self.log_fixed_points_num, 0);
+        let A_poly = Polynomial::new(&A_poly_coeffs);
+
+
+
+        println!("Time to interpolate b and A: {:?}", start.elapsed());
 
         let mut b_evaluations = vec![FE::zero(); NUM_QUERIES];
         let mut A_evaluations = vec![FE::zero(); NUM_QUERIES];

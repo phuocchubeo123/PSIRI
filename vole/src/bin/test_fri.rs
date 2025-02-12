@@ -7,7 +7,7 @@ extern crate serde_json;
 extern crate rayon;
 
 use psiri_vole::fri::{commit_poly, verify_fri_query, query_phase, FriLayer};
-use psiri_vole::utils::parallel_fft;
+use psiri_vole::utils::{parallel_fft, parallel_ifft};
 use psiri_vole::fri::new_fri_layer;
 use stark_platinum_prover::transcript::StoneProverTranscript;
 use stark_platinum_prover::proof::stark::StarkProof;
@@ -57,8 +57,8 @@ fn main() {
     let num_threads = current_num_threads();
     println!("🚀 Rayon is using {} threads", num_threads);
     // Set the polynomial degree
-    let log_size: usize = 22;
-    let log_blowup_factor: usize = 1;
+    let log_size: usize = 19;
+    let log_blowup_factor: usize = 2;
     let polynomial_degree = 1 << log_size; // Degree = polynomial_degree - 1
     let domain_size = polynomial_degree; // Example domain size (must be >= polynomial_degree)
 
@@ -78,13 +78,38 @@ fn main() {
     .unwrap();
     let mut roots_of_unity_inv = roots_of_unity.clone();
     roots_of_unity_inv[1..].reverse();
+
+    for i in 0..roots_of_unity.len() {
+        if roots_of_unity[i] * roots_of_unity_inv[i] != FE::one() {
+            panic!("Not inverse root of unity");
+        }
+    }
+
     let mut reversed_roots_of_unity_inv = roots_of_unity_inv.clone();
     in_place_bit_reverse_permute(&mut reversed_roots_of_unity_inv);
 
+    let small_roots_of_unity = (0..(1 << log_size)).into_iter().map(|i| roots_of_unity[i << log_blowup_factor]).collect::<Vec<FE>>();
+    let small_roots_of_unity_inv = (0..(1 << log_size)).into_iter().map(|i| roots_of_unity_inv[i << log_blowup_factor]).collect::<Vec<FE>>();
+
+
+    let small_roots_of_unity_ref = get_powers_of_primitive_root_coset(
+        log_size as u64,
+        1 << log_size as usize,
+        &FE::one(),
+    )
+    .unwrap();
+
+    println!("Are they equal {}", small_roots_of_unity == small_roots_of_unity_ref);
+
     let start = Instant::now();
     // let (last_value, fri_layer_list) = commit_poly(&poly, log_size, log_blowup_factor, log_size, &roots_of_unity, &roots_of_unity_inv); 
-    // let poly_fft = parallel_fft(&evals, &roots_of_unity, log_size, log_blowup_factor);
-    let fri_layer = new_fri_layer(&poly, log_blowup_factor, log_size, log_size, &roots_of_unity);
+    let poly_fft = parallel_fft(&evals, &roots_of_unity, log_size, log_blowup_factor);
+    // let fri_layer = new_fri_layer(&poly, log_blowup_factor, log_size, log_size, &roots_of_unity);
+    println!("Total time to commit: {:?}", start.elapsed());
+
+    let poly_fft_2 = parallel_fft(&evals, &small_roots_of_unity, log_size, 0);
+    let coeffs_again = parallel_ifft(&poly_fft_2, &small_roots_of_unity_inv, log_size, 0);
 
     println!("Total time to commit: {:?}", start.elapsed());
+    println!("Are they equal: {}", evals == coeffs_again);
 }
