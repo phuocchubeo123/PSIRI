@@ -384,7 +384,7 @@ impl OprfReceiver {
         // Receive back the decommitments of T_new
         let T_new_decommit = receive_decommit(io);
         // Verify decommitment
-        for (i, &iota) in iotas.iter().enumerate() {
+        iotas.par_iter().enumerate().for_each(|(i, iota)| {
             let result = verify_fri_query(
                 T_new_last_value,
                 &T_new_merkle_roots,
@@ -397,7 +397,7 @@ impl OprfReceiver {
             if result == false {
                 panic!("Receiver lied about T_new");
             }
-        }
+        });
         println!("T_new passed the degree test!");
 
         // Now test consistency between X_new and S_new
@@ -413,25 +413,24 @@ impl OprfReceiver {
         let S_new_evaluations_sym = io.receive_stark252(NUM_QUERIES).expect("Cannot receive evaluations sym of S_new");
         let S_new_paths = receive_merkle_path(io);
         // Verify S_new_evaluations
-        let verify_S_openings: bool = iotas
-        .iter()
-        .enumerate()
-        .zip(S_new_evaluations.iter())
-        .zip(S_new_evaluations_sym.iter())
-        .zip(S_new_paths.iter())
-        .fold(true, |result, ((((i, &iota), evaluation), evaluation_sym), path) | {
-            let openings_ok = verify_fri_layer_openings(
-                &S_new_merkle_root,
-                path,
-                evaluation,
-                evaluation_sym,
-                iota
-            );
-            if !openings_ok {
-                panic!("Lied about S_new at iota = {}", iota);
-            }
-            result & openings_ok
-        });
+        iotas
+            .par_iter()
+            .enumerate()
+            .zip(S_new_evaluations.par_iter())
+            .zip(S_new_evaluations_sym.par_iter())
+            .zip(S_new_paths.par_iter())
+            .for_each(|((((i, &iota), evaluation), evaluation_sym), path) | {
+                let openings_ok = verify_fri_layer_openings(
+                    &S_new_merkle_root,
+                    path,
+                    evaluation,
+                    evaluation_sym,
+                    iota
+                );
+                if !openings_ok {
+                    panic!("Lied about S_new at iota = {}", iota);
+                }
+            });
 
         // Receive evaluations on roots of unity of X_new and check with commitment
         let X_new_evaluations = io.receive_stark252(NUM_QUERIES).expect("Cannot receive evaluations of X_new");

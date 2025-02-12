@@ -16,14 +16,6 @@ use std::thread;
 use std::sync::{Arc, Mutex};
 extern crate libc;
 
-fn get_current_cpu() -> i32 {
-    unsafe {
-        libc::sched_getcpu() // Returns the CPU core number
-    }
-}
-
-
-
 pub type F = Stark252PrimeField;
 pub type FE = FieldElement<F>;
 
