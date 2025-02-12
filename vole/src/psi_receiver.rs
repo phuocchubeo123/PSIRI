@@ -65,17 +65,6 @@ impl OprfReceiver {
         }
         assert_eq!(fixed_points_num, 1 << log_fixed_points_num, "Number of values should be a power of 2"); 
 
-        let roots_of_unity = get_powers_of_primitive_root_coset(
-            (log_fixed_points_num + 2) as u64,
-            1 << (log_fixed_points_num + 2) as usize,
-            &FE::one(),
-        )
-        .unwrap();
-        let mut roots_of_unity_inv = roots_of_unity.clone();
-        roots_of_unity_inv[1..].reverse();
-
-        let small_roots_of_unity_inv: Vec<FE> = (0..fixed_points_num).into_par_iter().map(|i| roots_of_unity_inv[i*4]).collect();
-
         let mut vole_triple = VoleTriple::new(1, malicious, io, param);
         vole_triple.setup_receiver(io);
         vole_triple.extend_initialization();
@@ -99,14 +88,27 @@ impl OprfReceiver {
             X_new_merkle_root: [0u8; 32],
             fixed_points_num: 2 * n,
             log_fixed_points_num: log_fixed_points_num,
-            roots_of_unity: roots_of_unity,
-            roots_of_unity_inv: roots_of_unity_inv,
-            small_roots_of_unity_inv: small_roots_of_unity_inv,
+            roots_of_unity: vec![],
+            roots_of_unity_inv: vec![],
+            small_roots_of_unity_inv: vec![],
             transcript: transcript,
         }
     }
 
     pub fn commit_P(&mut self, values: &[FE]) {
+        let start = Instant::now();
+        self.roots_of_unity = get_powers_of_primitive_root_coset(
+            (self.log_fixed_points_num + 2) as u64,
+            1 << (self.log_fixed_points_num + 2) as usize,
+            &FE::one(),
+        ).unwrap();
+        println!("Time to get roots of unity: {:?}", start.elapsed());
+
+        self.roots_of_unity_inv = self.roots_of_unity.clone();
+        self.roots_of_unity_inv[1..].reverse();
+
+        self.small_roots_of_unity_inv: Vec<FE> = (0..self.fixed_points_num).into_par_iter().map(|i| self.roots_of_unity_inv[i*4]).collect();
+
         assert_eq!(values.len(), self.n, "Number of values received does not match the expected number of values");
 
         // First hash all inputs

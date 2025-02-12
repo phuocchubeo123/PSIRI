@@ -78,20 +78,6 @@ impl OprfSender {
         }
         assert_eq!(fixed_points_num, 1 << log_fixed_points_num, "Number of values should be a power of 2"); 
 
-        let roots_of_unity = get_powers_of_primitive_root_coset(
-            (log_fixed_points_num + 2) as u64,
-            1 << (log_fixed_points_num + 2) as usize,
-            &FE::one(),
-        ).unwrap();
-        let mut roots_of_unity_inv = roots_of_unity.clone();
-        roots_of_unity_inv[1..].reverse();
-
-        let small_roots_of_unity_inv: Vec<FE> = (0..fixed_points_num).into_par_iter().map(|i| roots_of_unity_inv[i*4]).collect();
-
-        for i in 0..roots_of_unity_inv.len() {
-            assert_eq!(roots_of_unity_inv[i] * roots_of_unity[i], FE::one(), "wrong inv of roots of unity");
-        }
-
         let public_input_data = vec![]; // hopefully it's safe
         let transcript = StoneProverTranscript::new(&public_input_data);
 
@@ -118,14 +104,31 @@ impl OprfSender {
             outputs_byte: vec![],
             fixed_points_num: fixed_points_num,
             log_fixed_points_num: log_fixed_points_num,
-            roots_of_unity: roots_of_unity,
-            roots_of_unity_inv: roots_of_unity_inv,
-            small_roots_of_unity_inv: small_roots_of_unity_inv,
+            roots_of_unity: vec![],
+            roots_of_unity_inv: vec![],
+            small_roots_of_unity_inv: vec![],
             transcript: transcript,
         }
     }
 
     pub fn commit_X(&mut self, values: &[FE]) {
+        let start = Instant::now();
+        self.roots_of_unity = get_powers_of_primitive_root_coset(
+            (self.log_fixed_points_num + 2) as u64,
+            1 << (self.log_fixed_points_num + 2) as usize,
+            &FE::one(),
+        ).unwrap();
+        println!("Time to get roots of unity: {:?}", start.elapsed());
+
+        self.roots_of_unity_inv = self.roots_of_unity.clone();
+        self.roots_of_unity_inv[1..].reverse();
+
+        self.small_roots_of_unity_inv: Vec<FE> = (0..self.fixed_points_num).into_par_iter().map(|i| self.roots_of_unity_inv[i*4]).collect();
+
+        // for i in 0..roots_of_unity_inv.len() {
+        //     assert_eq!(roots_of_unity_inv[i] * roots_of_unity[i], FE::one(), "wrong inv of roots of unity");
+        // }
+
         assert_eq!(values.len(), self.n, "The number of values of Sender should be n");
         // Low degree extension to later match with output commitment
         let mut X: Vec<FE> = Vec::with_capacity(2*self.n);
