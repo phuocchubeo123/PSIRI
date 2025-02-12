@@ -43,6 +43,7 @@ pub struct OprfReceiver {
     log_fixed_points_num: usize,
     roots_of_unity: Vec<FE>,
     roots_of_unity_inv: Vec<FE>,
+    small_roots_of_unity_inv: Vec<FE>,
     transcript: StoneProverTranscript,
 }
 
@@ -73,6 +74,8 @@ impl OprfReceiver {
         let mut roots_of_unity_inv = roots_of_unity.clone();
         roots_of_unity_inv[1..].reverse();
 
+        let small_roots_of_unity_inv: Vec<FE> = (0..fixed_points_num).into_par_iter().map(|i| roots_of_unity_inv[i*4]).collect();
+
         let mut vole_triple = VoleTriple::new(1, malicious, io, param);
         vole_triple.setup_receiver(io);
         vole_triple.extend_initialization();
@@ -98,6 +101,7 @@ impl OprfReceiver {
             log_fixed_points_num: log_fixed_points_num,
             roots_of_unity: roots_of_unity,
             roots_of_unity_inv: roots_of_unity_inv,
+            small_roots_of_unity_inv: small_roots_of_unity_inv,
             transcript: transcript,
         }
     }
@@ -122,7 +126,8 @@ impl OprfReceiver {
 
         // Interpolate P
         // Takes 50ms for 1<<16 inputs
-        let P_poly = Polynomial::interpolate_fft::<F>(&self.P).unwrap();
+        let P_poly_coeffs = parallel_ifft(&self.P, &self.small_roots_of_unity_inv, self.log_fixed_points_num, 0);
+        let P_poly = Polynomial::new(&P_poly_coeffs);
 
         // Blind P
         // Takes 30ms for 1<<16 inputs
@@ -299,7 +304,8 @@ impl OprfReceiver {
             .collect();
 
         // Compute evaluations on c to test Wolverine
-        let c_poly = Polynomial::interpolate_fft::<F>(&c).unwrap();
+        let c_poly_coeffs = parallel_ifft(&c, &self.small_roots_of_unity_inv, self.log_fixed_points_num, 0);
+        let c_poly = Polynomial::new(&c_poly_coeffs);
         let mut c_evaluations = vec![FE::zero(); NUM_QUERIES];
         c_evaluations.par_iter_mut().enumerate().for_each(|(i, ci)| {
             *ci = c_poly.evaluate(&iota_consistency_roots_of_unity[i]);

@@ -228,9 +228,12 @@ impl OprfSender {
         let mut hashes = vec![FE::zero(); self.n];
         hashes.copy_from_slice(values);
         input_hasher.permute_block(&mut hashes, self.n);
-        for i in 0..o.len() {
-            o[i] = o[i] - self.delta * hashes[i] + self.w;
-        }
+        o.par_iter_mut().enumerate().for_each(|(i, oi)| {
+            *oi = *oi - self.delta * hashes[i] + self.w;
+        });
+        // for i in 0..o.len() {
+        //     o[i] = o[i] - self.delta * hashes[i] + self.w;
+        // }
 
         println!("End of hashing: {:?}", start.elapsed());
 
