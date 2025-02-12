@@ -120,6 +120,8 @@ fn main() {
         let mut channel = TcpChannel::new(stream);
 
         // Send data to Sender for test
+        let data = (0..size).map(|_| rand_field_element()).collect::<Vec<FE>>();
+
         channel.send_stark252(&data).expect("Failed to send data to sender");
 
 
@@ -128,8 +130,6 @@ fn main() {
         let start = Instant::now();
         let mut oprf = OprfReceiver::new(&mut channel, size, true, param);
         println!("Initiate protocol took {:?}", start.elapsed());
-
-        let data = (0..size).map(|_| rand_field_element()).collect::<Vec<FE>>();
 
         let start = Instant::now();
         oprf.commit_P(&data);
