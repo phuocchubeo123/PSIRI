@@ -305,9 +305,12 @@ impl OprfSender {
         // Compute T_new_poly = (x^n + t) * T_poly
         let mut T_new_poly_coefficients = vec![FE::zero(); 4*self.n];
         T_new_poly_coefficients[self.n..].copy_from_slice(&T_poly_coefficients);
-        for i in 0..3*self.n {
-            T_new_poly_coefficients[i] += t * T_poly_coefficients[i];
-        }
+        T_new_poly_coefficients[..3*self.n].par_iter_mut().enumerate().for_each(|(i, T_new_i)| {
+            *T_new_i += t * T_poly_coefficients[i];
+        });
+        // for i in 0..3*self.n {
+        //     T_new_poly_coefficients[i] += t * T_poly_coefficients[i];
+        // }
 
         let T_new_poly = Polynomial::new(T_new_poly_coefficients.as_slice());
         // Prove that T_new_poly has degree < 4n
@@ -468,7 +471,7 @@ impl OprfSender {
         let Q_decommit = receive_decommit(io);
         // Verify decommitment
         
-        for (i, &iota) in iotas.iter().enumerate() {
+        iotas.par_iter().enumerate().for_each(|(i, &iota)| {
             let result = verify_fri_query(
                 Q_last_value,
                 &Q_merkle_roots,
@@ -481,7 +484,7 @@ impl OprfSender {
             if result == false {
                 panic!("Receiver lied about Q");
             }
-        }
+        });
         println!("Q passed the degree test!");
 
         let iotas_consistency: Vec<usize> = (0..NUM_QUERIES).map(|_| {
@@ -491,7 +494,7 @@ impl OprfSender {
             iota as usize
         }).collect();
         let iota_consistency_roots_of_unity = iotas_consistency
-            .iter()
+            .par_iter()
             .map(|&iota| self.roots_of_unity[reverse_index(iota, self.roots_of_unity.len() as u64)])
             .collect::<Vec<FE>>();
 
@@ -525,50 +528,48 @@ impl OprfSender {
         let P_new_evaluations_sym = io.receive_stark252(NUM_QUERIES).expect("Cannot receive evaluations sym of P_new");
         let P_new_paths = receive_merkle_path(io);
         // Verify P_new_evaluations
-        let verify_P_openings: bool = iotas_consistency
-        .iter()
-        .enumerate()
-        .zip(P_new_evaluations.iter())
-        .zip(P_new_evaluations_sym.iter())
-        .zip(P_new_paths.iter())
-        .fold(true, |result, ((((i, &iota), evaluation), evaluation_sym), path) | {
-            let openings_ok = verify_fri_layer_openings(
-                &self.P_new_merkle_root,
-                path,
-                evaluation,
-                evaluation_sym,
-                iota
-            );
-            if !openings_ok {
-                panic!("Lied about P_new at iota = {}", iota);
-            }
-            result & openings_ok
-        });
+        iotas_consistency
+            .par_iter()
+            .enumerate()
+            .zip(P_new_evaluations.par_iter())
+            .zip(P_new_evaluations_sym.par_iter())
+            .zip(P_new_paths.par_iter())
+            .for_each(|((((i, &iota), evaluation), evaluation_sym), path)| {
+                let openings_ok = verify_fri_layer_openings(
+                    &self.P_new_merkle_root,
+                    path,
+                    evaluation,
+                    evaluation_sym,
+                    iota
+                );
+                if !openings_ok {
+                    panic!("Lied about P_new at iota = {}", iota);
+                }
+            });
 
         // Receive evaluations on roots of unity of Q and check with commitment
         let Q_evaluations = io.receive_stark252(NUM_QUERIES).expect("Cannot receive evaluations of Q");
         let Q_evaluations_sym = io.receive_stark252(NUM_QUERIES).expect("Cannot receive evaluations sym of Q");
         let Q_paths = receive_merkle_path(io);
         // Verify Q_evaluations
-        let verify_Q_openings: bool = iotas_consistency
-        .iter()
-        .enumerate()
-        .zip(Q_evaluations.iter())
-        .zip(Q_evaluations_sym.iter())
-        .zip(Q_paths.iter())
-        .fold(true, |result, ((((i, &iota), evaluation), evaluation_sym), path) | {
-            let openings_ok = verify_fri_layer_openings(
-                &Q_merkle_root,
-                path,
-                evaluation,
-                evaluation_sym,
-                iota
-            );
-            if !openings_ok {
-                panic!("Lied about Q at iota = {}", iota);
-            }
-            result & openings_ok
-        });
+        iotas_consistency
+            .par_iter()
+            .enumerate()
+            .zip(Q_evaluations.par_iter())
+            .zip(Q_evaluations_sym.par_iter())
+            .zip(Q_paths.par_iter())
+            .for_each(|((((i, &iota), evaluation), evaluation_sym), path) | {
+                let openings_ok = verify_fri_layer_openings(
+                    &Q_merkle_root,
+                    path,
+                    evaluation,
+                    evaluation_sym,
+                    iota
+                );
+                if !openings_ok {
+                    panic!("Lied about Q at iota = {}", iota);
+                }
+            });
 
         // Now we can start checking VOLE, with the following equation:
         // (c(x) - b(x)) * delta_inv - (A(x) - P_new(x)) = a(x) - (a(x) - Q(x) * (x^2n - 1)) = Q(x) * (x^2n - 1)

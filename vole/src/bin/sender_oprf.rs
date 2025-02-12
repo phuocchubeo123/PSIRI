@@ -8,7 +8,7 @@ use psiri_vole::socket_channel::TcpChannel;
 use psiri_vole::comm_channel::CommunicationChannel;
 use psiri_vole::psi_sender::OprfSender;
 use psiri_vole::psi_receiver::OprfReceiver;
-use psiri_vole::vole_triple::PHUOC_LPN;
+use psiri_vole::vole_triple::{MILLION_LPN, FOUR_MILLION_LPN};
 use psiri_vole::utils::rand_field_element;
 use std::net::{TcpStream, TcpListener};
 use std::time::Instant;
@@ -74,7 +74,7 @@ fn main() {
             .expect("Failed to connect to receiver");
         let mut channel = TcpChannel::new(stream);
 
-        let mut oprf = OprfSender::new(&mut channel, size, true, PHUOC_LPN);
+        let mut oprf = OprfSender::new(&mut channel, size, true, FOUR_MILLION_LPN);
 
         let data = channel.receive_stark252(size).expect("Failed to receive data from receiver");
 
@@ -96,14 +96,16 @@ fn main() {
         let (stream, _) = listener.accept().expect("Failed to accept connection");
         let mut channel = TcpChannel::new(stream);
 
-        let mut oprf = OprfReceiver::new(&mut channel, size, true, PHUOC_LPN);
+        let start_protocol = Instant::now();
+
+        let start = Instant::now();
+        let mut oprf = OprfReceiver::new(&mut channel, size, true, FOUR_MILLION_LPN);
+        println!("Initiate protocol took {:?}", start.elapsed());
 
         let data = (0..size).map(|_| rand_field_element()).collect::<Vec<FE>>();
 
         // Send data to Sender for test
         channel.send_stark252(&data).expect("Failed to send data to sender");
-
-        let start_protocol = Instant::now();
 
         let start = Instant::now();
         oprf.commit_P(&data);

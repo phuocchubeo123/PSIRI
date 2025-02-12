@@ -2,7 +2,7 @@ extern crate psiri_vole;
 extern crate lambdaworks_math;
 
 use psiri_vole::socket_channel::TcpChannel;
-use psiri_vole::vole_triple::{VoleTriple, PHUOC_LPN};
+use psiri_vole::vole_triple::{VoleTriple, MILLION_LPN};
 use std::net::TcpListener;
 use std::time::Instant;
 use lambdaworks_math::field::fields::fft_friendly::stark_252_prime_field::Stark252PrimeField;
@@ -17,7 +17,7 @@ fn main() {
     let (stream, _) = listener.accept().expect("Failed to accept connection");
     let mut channel = TcpChannel::new(stream);
 
-    let mut vole = VoleTriple::new(1, true, &mut channel, PHUOC_LPN);
+    let mut vole = VoleTriple::new(1, true, &mut channel, MILLION_LPN);
     
     let start = Instant::now();
     vole.setup_receiver(&mut channel);
