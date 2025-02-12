@@ -7,6 +7,7 @@ use lambdaworks_math::field::fields::fft_friendly::stark_252_prime_field::Stark2
 use lambdaworks_math::field::element::FieldElement;
 use lambdaworks_math::traits::ByteConversion;
 use std::convert::TryInto;
+use rayon::prelude::*;
 
 pub type F = Stark252PrimeField;
 pub type FE = FieldElement<F>;
@@ -122,12 +123,17 @@ impl SpfssRecverFp {
 
         let tmp = self.ggm_tree.clone();
 
-        for i in (0..item_n).step_by(2).rev() {
-            prp.node_expand_2to4(
-                &mut self.ggm_tree[i * 2..i * 2 + 4],
-                &tmp[i..i + 2],
-            );
-        }
+        // for i in (0..item_n).step_by(2).rev() {
+        //     prp.node_expand_2to4(
+        //         &mut self.ggm_tree[i * 2..i * 2 + 4],
+        //         &tmp[i..i + 2],
+        //     );
+        // }
+
+        self.ggm_tree[..2*item_n].par_chunks_mut(4).enumerate().for_each(|(i, children)| {
+            let mut prp2 = TwoKeyPRP::new();
+            prp.node_expand_2to4(children, &tmp[2*i..2*i+2]);
+        });
     }
 
     /// Consistency check for the protocol.
