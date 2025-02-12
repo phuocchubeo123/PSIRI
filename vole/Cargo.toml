@@ -93,7 +93,7 @@ name = "test_block"
 name = "test_fri"
 
 [[bin]]
-name = "sender_oprf"
+name = "oprf"
 
 [[bin]]
 name = "test_rayon"

@@ -50,19 +50,26 @@ fn main() {
                 .required(true)
                 .index(4),
         )
+        .arg(
+            Arg::new("threads")
+                .help("Set the number of threads")
+                .required(true)
+                .index(5)
+        )
         .get_matches();
 
     let role = matches.get_one::<String>("role").unwrap();
     let address = matches.get_one::<String>("address").unwrap();
     let port = matches.get_one::<String>("port").unwrap();
     let log_size = matches.get_one::<String>("log_size").unwrap().parse::<usize>().unwrap();
+    let num_threads = matches.get_one::<String>("threads").unwrap().parse::<usize>().unwrap();
+
     
     ThreadPoolBuilder::new()
-        .num_threads(16) // Adjust the number of threads as needed
+        .num_threads(num_threads) // Adjust the number of threads as needed
         .build_global()
         .unwrap();
-    
-    let num_threads = current_num_threads();
+
     println!("🚀 Rayon is using {} threads", num_threads);
 
     let size = 1 << log_size;
