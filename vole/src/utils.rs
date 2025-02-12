@@ -1,4 +1,5 @@
 use lambdaworks_math::field::fields::fft_friendly::stark_252_prime_field::Stark252PrimeField;
+use lambdaworks_math::unsigned_integer::element::U256;
 use lambdaworks_math::field::element::FieldElement;
 use lambdaworks_math::unsigned_integer::element::UnsignedInteger;
 use lambdaworks_math::traits::{ByteConversion, AsBytes};
@@ -18,6 +19,36 @@ extern crate libc;
 
 pub type F = Stark252PrimeField;
 pub type FE = FieldElement<F>;
+
+// Root of unity for Stark-252
+const TWO_ADICITY: u64 = 192;
+const TWO_ADIC_PRIMITVE_ROOT_OF_UNITY: U256 = UnsignedInteger::from_hex_unchecked(
+    "5282db87529cfa3f0464519c8b0fa5ad187148e11a61616070024f42f8ef94",
+);
+
+pub fn get_roots_of_unity(order: u64) -> Vec<FE> {
+    let two_adic_primitive_root_of_unity = FE::new(TWO_ADIC_PRIMITVE_ROOT_OF_UNITY);
+    let log_power = TWO_ADICITY - order;
+    let root = (0..log_power).fold(two_adic_primitive_root_of_unity, |acc, _| acc.square());
+
+    let mut roots = vec![FE::zero(); 1 << order];
+    roots[0] = FE::one();
+
+    let chunk = 1 << 14;
+
+    for i in 1..chunk {
+        roots[i] = roots[i-1] * root;
+    }
+
+    let root_pow = roots[chunk-1] * root;
+
+    for i in 1..(roots.len() / chunk) {
+        let roots_new: Vec<FE> = roots[(i-1)*chunk..i*chunk].par_iter().map(|x| x * root_pow).collect();
+        roots[i*chunk..(i+1)*chunk].copy_from_slice(&roots_new);
+    }
+
+    roots
+}
 
 pub fn rand_field_element() -> FE {
     let rand_big = UnsignedInteger { limbs: random() };

@@ -1,5 +1,5 @@
 use crate::fri::*;
-use crate::utils::{rand_field_element, parallel_fft, parallel_ifft};
+use crate::utils::{rand_field_element, parallel_fft, parallel_ifft, get_roots_of_unity};
 use crate::comm_channel::CommunicationChannel;
 use crate::vole_triple::{VoleTriple, PrimalLPNParameterFp61};
 use psiri_aes::prg::PRG;
@@ -113,11 +113,7 @@ impl OprfSender {
 
     pub fn commit_X(&mut self, values: &[FE]) {
         let start = Instant::now();
-        self.roots_of_unity = get_powers_of_primitive_root_coset(
-            (self.log_fixed_points_num + 2) as u64,
-            1 << (self.log_fixed_points_num + 2) as usize,
-            &FE::one(),
-        ).unwrap();
+        self.roots_of_unity = get_roots_of_unity((self.log_fixed_points_num + 2) as u64);
         println!("Time to get roots of unity: {:?}", start.elapsed());
 
         self.roots_of_unity_inv = self.roots_of_unity.clone();

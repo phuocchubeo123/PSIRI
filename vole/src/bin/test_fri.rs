@@ -7,7 +7,7 @@ extern crate serde_json;
 extern crate rayon;
 
 use psiri_vole::fri::{commit_poly, verify_fri_query, query_phase, FriLayer};
-use psiri_vole::utils::{parallel_fft, parallel_ifft};
+use psiri_vole::utils::{parallel_fft, parallel_ifft, get_roots_of_unity};
 use psiri_vole::fri::new_fri_layer;
 use stark_platinum_prover::transcript::StoneProverTranscript;
 use stark_platinum_prover::proof::stark::StarkProof;
@@ -57,7 +57,7 @@ fn main() {
     let num_threads = current_num_threads();
     println!("🚀 Rayon is using {} threads", num_threads);
     // Set the polynomial degree
-    let log_size: usize = 19;
+    let log_size: usize = 20;
     let log_blowup_factor: usize = 2;
     let polynomial_degree = 1 << log_size; // Degree = polynomial_degree - 1
     let domain_size = polynomial_degree; // Example domain size (must be >= polynomial_degree)
@@ -70,12 +70,21 @@ fn main() {
     // for eval in evals.iter() {
     //     println!("{:?}", eval);
     // }
+    let start = Instant::now();
     let roots_of_unity = get_powers_of_primitive_root_coset(
         (log_size + log_blowup_factor) as u64,
         1 << (log_size + log_blowup_factor) as usize,
         &FE::one(),
     )
     .unwrap();
+    println!("Non Parallel roots of unity: {:?}", start.elapsed());
+
+    let start = Instant::now();
+    let roots_of_unity_ref = get_roots_of_unity((log_size + log_blowup_factor) as u64);
+    println!("Parallel roots of unity: {:?}", start.elapsed());
+
+    println!("Are they equal: {}", roots_of_unity == roots_of_unity_ref);
+
     let mut roots_of_unity_inv = roots_of_unity.clone();
     roots_of_unity_inv[1..].reverse();
 

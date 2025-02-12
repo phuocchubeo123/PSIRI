@@ -1,7 +1,7 @@
 use crate::fri::*;
 use crate::comm_channel::CommunicationChannel;  
 use crate::vole_triple::{VoleTriple, PrimalLPNParameterFp61};
-use crate::utils::{parallel_fft, parallel_ifft};
+use crate::utils::{parallel_fft, parallel_ifft, get_roots_of_unity};
 use psiri_aes::prg::PRG;
 use psiri_aes::prp::FieldPRP;
 use psiri_okvs::types::{Okvs, Pair};
@@ -97,11 +97,7 @@ impl OprfReceiver {
 
     pub fn commit_P(&mut self, values: &[FE]) {
         let start = Instant::now();
-        self.roots_of_unity = get_powers_of_primitive_root_coset(
-            (self.log_fixed_points_num + 2) as u64,
-            1 << (self.log_fixed_points_num + 2) as usize,
-            &FE::one(),
-        ).unwrap();
+        self.roots_of_unity = get_roots_of_unity((self.log_fixed_points_num + 2) as u64);
         println!("Time to get roots of unity: {:?}", start.elapsed());
 
         self.roots_of_unity_inv = self.roots_of_unity.clone();
@@ -384,7 +380,7 @@ impl OprfReceiver {
         // Receive back the decommitments of T_new
         let T_new_decommit = receive_decommit(io);
         // Verify decommitment
-        iotas.par_iter().enumerate().for_each(|(i, iota)| {
+        iotas.par_iter().enumerate().for_each(|(i, &iota)| {
             let result = verify_fri_query(
                 T_new_last_value,
                 &T_new_merkle_roots,
