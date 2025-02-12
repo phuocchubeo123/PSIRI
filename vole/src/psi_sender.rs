@@ -378,53 +378,53 @@ impl OprfSender {
 
         // Send evaluations and merkle paths for S_new
         let S_new_evaluations: Vec<FE> = iotas_consistency
-            .iter()
+            .par_iter()
             .map(|&iota| self.S_new_commit.evaluation[iota])
             .collect();
         io.send_stark252(&S_new_evaluations).expect("Cannot send evaluations of S_new");
         let S_new_evaluations_sym: Vec<FE> = iotas_consistency
-            .iter()
+            .par_iter()
             .map(|&iota| self.S_new_commit.evaluation[iota^1])
             .collect();
         io.send_stark252(&S_new_evaluations_sym).expect("Cannot send sym evaluations of S_new");
         let S_new_paths: Vec<Proof<Commitment>> = iotas_consistency
-            .iter()
+            .par_iter()
             .map(|&iota| self.S_new_commit.merkle_tree.get_proof_by_pos(iota>>1))
             .collect();
         send_merkle_path(io, &S_new_paths);
 
         // Send evaluations and merkle paths for X_new
         let X_new_evaluations: Vec<FE> = iotas_consistency
-            .iter()
+            .par_iter()
             .map(|&iota| self.X_new_commit.evaluation[iota])
             .collect();
         io.send_stark252(&X_new_evaluations).expect("Cannot send evaluations of X_new");
         let X_new_evaluations_sym: Vec<FE> = iotas_consistency
-            .iter()
+            .par_iter()
             .map(|&iota| self.X_new_commit.evaluation[iota^1])
             .collect();
         io.send_stark252(&X_new_evaluations_sym).expect("Cannot send sym evaluations of X_new");
         let X_new_paths: Vec<Proof<Commitment>> = iotas_consistency
-            .iter()
+            .par_iter()
             .map(|&iota| self.X_new_commit.merkle_tree.get_proof_by_pos(iota>>1))
             .collect();
         send_merkle_path(io, &X_new_paths);
 
         // Send evaluation and merkle paths for T_new
         let T_new_evaluations: Vec<FE> = iotas_consistency
-            .iter()
+            .par_iter()
             .map(|&iota| self.T_new_fri_layers[0].evaluation[iota])
             .collect();
         io.send_stark252(&T_new_evaluations).expect("Cannot send evaluations of T_new");
         let T_new_evaluations_sym: Vec<FE> = iotas_consistency
-            .iter()
+            .par_iter()
             .map(|&iota| self.T_new_fri_layers[0].evaluation[iota^1])
             .collect();
         io.send_stark252(&T_new_evaluations_sym).expect("Cannot send sym evaluations of T_new");
 
         let start = Instant::now();
         let T_new_paths: Vec<Proof<Commitment>> = iotas_consistency
-            .iter()
+            .par_iter()
             .map(|&iota| self.T_new_fri_layers[0].merkle_tree.get_proof_by_pos(iota>>1))
             .collect();
         println!("Time to prepare paths for T_new: {:?}", start.elapsed());
