@@ -123,7 +123,7 @@ impl OprfSender {
         self.roots_of_unity_inv = self.roots_of_unity.clone();
         self.roots_of_unity_inv[1..].reverse();
 
-        self.small_roots_of_unity_inv: Vec<FE> = (0..self.fixed_points_num).into_par_iter().map(|i| self.roots_of_unity_inv[i*4]).collect();
+        self.small_roots_of_unity_inv = (0..self.fixed_points_num).into_par_iter().map(|i| self.roots_of_unity_inv[i*4]).collect();
 
         // for i in 0..roots_of_unity_inv.len() {
         //     assert_eq!(roots_of_unity_inv[i] * roots_of_unity[i], FE::one(), "wrong inv of roots of unity");

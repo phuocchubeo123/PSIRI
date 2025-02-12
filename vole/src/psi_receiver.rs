@@ -107,7 +107,7 @@ impl OprfReceiver {
         self.roots_of_unity_inv = self.roots_of_unity.clone();
         self.roots_of_unity_inv[1..].reverse();
 
-        self.small_roots_of_unity_inv: Vec<FE> = (0..self.fixed_points_num).into_par_iter().map(|i| self.roots_of_unity_inv[i*4]).collect();
+        self.small_roots_of_unity_inv = (0..self.fixed_points_num).into_par_iter().map(|i| self.roots_of_unity_inv[i*4]).collect();
 
         assert_eq!(values.len(), self.n, "Number of values received does not match the expected number of values");
 
