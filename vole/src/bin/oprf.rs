@@ -76,7 +76,7 @@ fn main() {
     let log_size = matches.get_one::<String>("log_size").unwrap().parse::<usize>().unwrap();
     let num_threads = matches.get_one::<String>("threads").unwrap().parse::<usize>().unwrap();
     let params_idx = matches.get_one::<String>("params").unwrap().parse::<usize>().unwrap();
-    let committed = matches.get_one::<String>("params").unwrap().parse::<bool>().unwrap();
+    let committed = matches.get_one::<String>("params").unwrap().parse::<usize>().unwrap() != 0;
     
     ThreadPoolBuilder::new()
         .num_threads(num_threads) // Adjust the number of threads as needed
