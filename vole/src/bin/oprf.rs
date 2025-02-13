@@ -115,10 +115,10 @@ fn main() {
 
         let start = Instant::now();
         oprf.commit_X(&data);
+        println!("X commit time: {:?}", start.elapsed());
 
         oprf.receive_P_commit(&mut channel, &mut comm);
         oprf.send_X_commit(&mut channel, &mut comm);
-        println!("X commit time: {:?}", start.elapsed());
 
         oprf.send(&mut channel, &data, &mut comm);
     } else if role == "receiver" {
@@ -140,10 +140,10 @@ fn main() {
 
         let start = Instant::now();
         oprf.commit_P(&data);
+        println!("P commit time: {:?}", start.elapsed());
 
         oprf.send_P_commit(&mut channel, &mut comm);
         oprf.receive_X_commit(&mut channel, &mut comm);
-        println!("P commit time: {:?}", start.elapsed());
 
         let mut outputs = vec![FE::zero(); size];
         oprf.receive(&mut channel, &data, &mut comm);
