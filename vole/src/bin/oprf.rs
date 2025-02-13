@@ -84,6 +84,7 @@ fn main() {
         .unwrap();
 
     println!("🚀 Rayon is using {} threads", num_threads);
+    println!("Committed? :{}", committed);
 
     let size = 1 << log_size;
     let mut param = MILLION_LPN;
