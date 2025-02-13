@@ -3,3 +3,4 @@ target/*
 Cargo.lock
 paxos/
 **/target/*
+run_exp.sh
