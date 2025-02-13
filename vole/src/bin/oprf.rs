@@ -89,16 +89,14 @@ fn main() {
     let size = 1 << log_size;
     let mut param = MILLION_LPN;
     if params_idx == 0 {
-        param = LPN16;
-    } else if params_idx == 1{
         param = LPN17;
-    } else if params_idx == 2 {
+    } else if params_idx == 1{
         param = MILLION_LPN;
-    } else if params_idx == 3 {
+    } else if params_idx == 2 {
         param = ONE_MILLION_LPN;
-    } else if params_idx == 4 {
+    } else if params_idx == 3 {
         param = TWO_MILLION_LPN;
-    } else if params_idx == 5 {
+    } else if params_idx == 4 {
         param = THREE_MILLION_LPN;
     }
 

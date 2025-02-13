@@ -91,12 +91,6 @@ impl PrimalLPNParameterFp61 {
     }
 }
 
-pub const LPN16: PrimalLPNParameterFp61 = PrimalLPNParameterFp61 {
-    n: 80000, t: 1250, k: 5000, log_bin_sz: 6,
-    n_pre: 10304, t_pre: 644, k_pre: 1120, log_bin_sz_pre: 4,
-    n_pre0: 1800, t_pre0: 225, k_pre0: 600, log_bin_sz_pre0: 3,
-};
-
 pub const LPN17: PrimalLPNParameterFp61 = PrimalLPNParameterFp61 {
     n: 150016, t: 1172, k: 9000, log_bin_sz: 7,
     n_pre: 10304, t_pre: 644, k_pre: 1120, log_bin_sz_pre: 4,
