@@ -33,14 +33,14 @@ impl BaseCot {
         }
     }
 
-    pub fn cot_gen_pre<IO: CommunicationChannel>(&mut self, io: &mut IO, deltain: Option<[u8; 32]>) {
+    pub fn cot_gen_pre<IO: CommunicationChannel>(&mut self, io: &mut IO, deltain: Option<[u8; 32]>, comm: &mut u64) {
         if let Some(deltain) = deltain {
             if self.party == 0 {
                 self.ot_delta = Some(deltain);
                 let delta_bool = block_to_bool(&deltain);
-                self.iknp.setup_send(io, Some(&delta_bool), None);
+                self.iknp.setup_send(io, Some(&delta_bool), None, comm);
             } else {
-                self.iknp.setup_recv(io, None, None);
+                self.iknp.setup_recv(io, None, None, comm);
             }
         } else {
             if self.party == 0 {
@@ -52,16 +52,16 @@ impl BaseCot {
                 delta = bitwise_xor(&delta, &self.one);
                 self.ot_delta = Some(delta);
                 let delta_bool = block_to_bool(&delta);
-                self.iknp.setup_send(io, Some(&delta_bool), None);
+                self.iknp.setup_send(io, Some(&delta_bool), None, comm);
             } else {
-                self.iknp.setup_recv(io, None, None);
+                self.iknp.setup_recv(io, None, None, comm);
             }
         }
     }
 
-    pub fn cot_gen<IO: CommunicationChannel>(&mut self, io: &mut IO, ot_data: &mut [[u8; 32]], size: usize, pre_bool: Option<&[bool]>) {
+    pub fn cot_gen<IO: CommunicationChannel>(&mut self, io: &mut IO, ot_data: &mut [[u8; 32]], size: usize, pre_bool: Option<&[bool]>, comm: &mut u64) {
         if self.party == 0 {
-            self.iknp.send_cot(io, ot_data, size);
+            self.iknp.send_cot(io, ot_data, size, comm);
             io.flush();
             for block in ot_data.iter_mut() {
                 *block = bitwise_and(block, &self.minus_one);
@@ -79,7 +79,7 @@ impl BaseCot {
                 prg.random_bool_array(&mut pre_bool_ini);
             }
 
-            self.iknp.recv_cot(io, ot_data, &pre_bool_ini, size);
+            self.iknp.recv_cot(io, ot_data, &pre_bool_ini, size, comm);
 
             let ch = [
                 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -94,12 +94,12 @@ impl BaseCot {
         }
     }
 
-    pub fn cot_gen_preot<IO: CommunicationChannel>(&mut self, io: &mut IO, pre_ot: &mut OTPre, size: usize, pre_bool: Option<&[bool]>) {
+    pub fn cot_gen_preot<IO: CommunicationChannel>(&mut self, io: &mut IO, pre_ot: &mut OTPre, size: usize, pre_bool: Option<&[bool]>, comm: &mut u64) {
         let mut ot_data = vec![[0u8; 32]; size]; // Allocate space for `ot_data`
 
         if self.party == 0 {
             // ALICE
-            self.iknp.send_cot(io, &mut ot_data, size);
+            self.iknp.send_cot(io, &mut ot_data, size, comm);
             // io.flush();
 
             // Apply `minus_one` to all blocks
@@ -128,7 +128,7 @@ impl BaseCot {
             }
 
             // Call `recv_cot` on `iknp`
-            self.iknp.recv_cot(io, &mut ot_data, &pre_bool_ini, size);
+            self.iknp.recv_cot(io, &mut ot_data, &pre_bool_ini, size, comm);
 
             let ch = [
                 [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -151,17 +151,17 @@ impl BaseCot {
     pub fn check_cot<IO: CommunicationChannel>(&mut self, io: &mut IO, data: &[[u8; 32]], len: usize) -> bool {
         if self.party == 0 {
             if let Some(delta) = self.ot_delta {
-                io.send_block::<32>(&[delta]);
+                io.send_block::<32>(&[delta]).expect("Failed to send delta");
             }
-            io.send_block::<32>(data);
+            io.send_block::<32>(data).expect("Failed to send check data");
             io.flush();
             true
         } else {
             let mut tmp = vec![[0u8; 32]; len];
             let mut ch = [[0u8; 32]; 2];
-            ch[1] = io.receive_block::<32>()[0];
+            ch[1] = io.receive_block::<32>().expect("Failed to receiver delta")[0];
             ch[0] = [0u8; 32];
-            tmp = io.receive_block::<32>();
+            tmp = io.receive_block::<32>().expect("Failed to receive check data");
             for i in 0..len {
                 tmp[i] = bitwise_xor(&tmp[i], &ch[get_lsb(&data[i]) as usize]);
             }

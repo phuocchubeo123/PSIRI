@@ -25,7 +25,7 @@ impl OTPre {
     }
 
     /// Receives choice bits from the receiver and updates internal state
-    pub fn choices_sender<IO: CommunicationChannel>(&mut self, io: &mut IO) {
+    pub fn choices_sender<IO: CommunicationChannel>(&mut self, io: &mut IO, comm: &mut u64) {
         let received_bits = io.receive_bits().expect("Failed to receive bits");
         for (i, &bit) in received_bits.iter().enumerate() {
             self.bits[self.count + i] = bit;
@@ -34,13 +34,13 @@ impl OTPre {
     }
 
     /// Sends the adjusted choice bits to the sender
-    pub fn choices_recver<IO: CommunicationChannel>(&mut self, io: &mut IO, choices: &[bool]) {
+    pub fn choices_recver<IO: CommunicationChannel>(&mut self, io: &mut IO, choices: &[bool], comm: &mut u64) {
         let mut adjusted_bits = vec![false; self.length];
         for i in 0..self.length {
             adjusted_bits[i] = choices[i] ^ self.bits[self.count + i];
             self.bits[self.count+i] = adjusted_bits[i].clone();
         }
-        io.send_bits(&adjusted_bits).expect("Failed to send bits");
+        *comm += io.send_bits(&adjusted_bits).expect("Failed to send bits");
         self.count += self.length;
     }
 
@@ -81,6 +81,7 @@ impl OTPre {
         m1: &[[u8; 32]],
         length: usize,
         s: usize,
+        comm: &mut u64,
     ) {
         let mut pad = vec![[0u8; 32]; 2*length];
         let k = s * length;
@@ -95,7 +96,7 @@ impl OTPre {
                 pad[2*i+1] = xor_block(&m1[i], &self.pre_data[idx]);
             }
         }
-        io.send_block::<32>(&pad);
+        *comm += io.send_block::<32>(&pad).expect("Failed to send padded data");
     }
 
     /// Receive and reconstruct data based on precomputed values
@@ -106,8 +107,9 @@ impl OTPre {
         b: &[bool],
         length: usize,
         s: usize,
+        comm: &mut u64,
     ) {
-        let pad = io.receive_block::<32>();
+        let pad = io.receive_block::<32>().expect("Receive padded data failed");
         let k = s * length;
 
         for i in 0..length {

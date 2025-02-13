@@ -494,18 +494,18 @@ pub fn fold_polynomial(
     even_poly + odd_poly
 }
 
-pub fn send_fri<IO: CommunicationChannel>(io: &mut IO, last_value: FE, fri_layers: &Vec<FriLayer>) {
-    io.send_stark252(&[last_value]).expect("Failed to send last value for commitment");
+pub fn send_fri<IO: CommunicationChannel>(io: &mut IO, last_value: FE, fri_layers: &Vec<FriLayer>, comm: &mut u64) {
+    *comm += io.send_stark252(&[last_value]).expect("Failed to send last value for commitment");
     let num_layers = fri_layers.len();
-    io.send_u8(&(num_layers as u64).to_le_bytes()).expect("Failed to send num_layers commitment");
+    *comm += io.send_u8(&(num_layers as u64).to_le_bytes()).expect("Failed to send num_layers commitment");
     for fri_layer in fri_layers.iter() {
         let serialized = serde_json::to_vec(fri_layer).expect("Failed to serialize fri layer");
-        io.send_u8(&serialized);
+        *comm += io.send_u8(&serialized).expect("Failed to send fri layers");
     }
 }
 
-pub fn receive_fri<IO: CommunicationChannel>(io: &mut IO) -> (FE, Vec<FriLayer>) {
-    let last_value = io.receive_stark252(1).expect("Failed to receive P fri last value")[0];
+pub fn receive_fri<IO: CommunicationChannel>(io: &mut IO, comm: &mut u64) -> (FE, Vec<FriLayer>) {
+    let last_value = io.receive_stark252().expect("Failed to receive P fri last value")[0];
     let num_layers = u64::from_le_bytes(io.receive_u8().unwrap().try_into().unwrap()) as usize;
 
     let mut fri_layers: Vec<FriLayer> = Vec::with_capacity(num_layers as usize);
@@ -517,22 +517,22 @@ pub fn receive_fri<IO: CommunicationChannel>(io: &mut IO) -> (FE, Vec<FriLayer>)
     (last_value, fri_layers)
 }
 
-pub fn send_decommit<IO: CommunicationChannel>(io: &mut IO, decommits: &Vec<FriDecommitment<F>>) {
+pub fn send_decommit<IO: CommunicationChannel>(io: &mut IO, decommits: &Vec<FriDecommitment<F>>, comm: &mut u64) {
     let serialized_data = serde_json::to_vec(&decommits).expect("Failed to serialize FriDecommitments");
-    io.send_u8(&serialized_data).expect("Failed to send decommitments");
+    *comm += io.send_u8(&serialized_data).expect("Failed to send decommitments");
 }
 
-pub fn receive_decommit<IO: CommunicationChannel>(io: &mut IO) -> Vec<FriDecommitment<F>> {
+pub fn receive_decommit<IO: CommunicationChannel>(io: &mut IO, comm: &mut u64) -> Vec<FriDecommitment<F>> {
     let serialized_data = io.receive_u8().expect("Failed to receive decommitments");
     serde_json::from_slice(&serialized_data).expect("Cannot deserialize decommitments")
 }
 
-pub fn send_merkle_path<IO: CommunicationChannel>(io: &mut IO, merkle_path: &Vec<Proof<Commitment>>) {
+pub fn send_merkle_path<IO: CommunicationChannel>(io: &mut IO, merkle_path: &Vec<Proof<Commitment>>, comm: &mut u64) {
     let serialized_data = serde_json::to_vec(&merkle_path).expect("Failed to serialize Merkle path");
-    io.send_u8(&serialized_data).expect("Failed to send Merkle paths");
+    *comm += io.send_u8(&serialized_data).expect("Failed to send Merkle paths");
 }
 
-pub fn receive_merkle_path<IO: CommunicationChannel>(io: &mut IO) -> Vec<Proof<Commitment>> {
+pub fn receive_merkle_path<IO: CommunicationChannel>(io: &mut IO, comm: &mut u64) -> Vec<Proof<Commitment>> {
     let serialized_data = io.receive_u8().expect("Failed to receive Merkle paths");
     serde_json::from_slice(&serialized_data).expect("Cannot deserialize Merkle paths")
 }

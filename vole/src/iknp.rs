@@ -38,7 +38,7 @@ impl IKNP {
         }
     }
 
-    pub fn setup_send<IO: CommunicationChannel>(&mut self, io: &mut IO, in_s: Option<&[bool]>, in_k0: Option<&[[u8; 16]]>) {
+    pub fn setup_send<IO: CommunicationChannel>(&mut self, io: &mut IO, in_s: Option<&[bool]>, in_k0: Option<&[[u8; 16]]>, comm: &mut u64) {
         self.setup = true;
 
         if let Some(in_s) = in_s {
@@ -52,7 +52,7 @@ impl IKNP {
             self.k0.copy_from_slice(in_k0);
         } else {
             self.k0.clear();
-            self.base_ot.recv(io, &self.s, &mut self.k0);
+            self.base_ot.recv(io, &self.s, &mut self.k0, comm);
         }
 
         self.g0 = Some(
@@ -69,7 +69,7 @@ impl IKNP {
         self.delta = Some(bool_to_block(&self.s));
     }
 
-    pub fn setup_recv<IO: CommunicationChannel>(&mut self, io: &mut IO, in_k0: Option<&[[u8; 16]]>, in_k1: Option<&[[u8; 16]]>) {
+    pub fn setup_recv<IO: CommunicationChannel>(&mut self, io: &mut IO, in_k0: Option<&[[u8; 16]]>, in_k1: Option<&[[u8; 16]]>, comm: &mut u64) {
         self.setup = true;
 
         if let (Some(in_k0), Some(in_k1)) = (in_k0, in_k1) {
@@ -79,7 +79,7 @@ impl IKNP {
             let mut prg = PRG::new(None, 0);
             prg.random_block(&mut self.k0);
             prg.random_block(&mut self.k1);
-            self.base_ot.send(io, &self.k0, &self.k1);
+            self.base_ot.send(io, &self.k0, &self.k1, comm);
         }
 
         self.g0 = Some(
@@ -104,37 +104,37 @@ impl IKNP {
         );
     }
 
-    pub fn send_pre<IO: CommunicationChannel>(&mut self, io: &mut IO, out: &mut [[u8; 32]], length: usize) {
+    pub fn send_pre<IO: CommunicationChannel>(&mut self, io: &mut IO, out: &mut [[u8; 32]], length: usize, comm: &mut u64) {
         if !self.setup {
-            self.setup_send(io, None, None);
+            self.setup_send(io, None, None, comm);
         }
 
         let mut idx = 0;
         while idx + BLOCK_SIZE <= length {
-            self.send_pre_block(io, &mut out[idx..idx+BLOCK_SIZE], BLOCK_SIZE);
+            self.send_pre_block(io, &mut out[idx..idx+BLOCK_SIZE], BLOCK_SIZE, comm);
             idx += BLOCK_SIZE;
         }
 
         let remaining = length - idx;
         if remaining > 0 {
             let mut temp_out = [[0u8; 32]; BLOCK_SIZE];
-            self.send_pre_block(io, &mut temp_out, remaining);
+            self.send_pre_block(io, &mut temp_out, remaining, comm);
             out[idx..].copy_from_slice(&temp_out[..remaining]);
         }
 
         if self.malicious {
             let mut temp_out = vec![[0u8; 32]; BLOCK_SIZE];
-            self.send_pre_block(io, &mut temp_out, 2 * NUM_BITS);
+            self.send_pre_block(io, &mut temp_out, 2 * NUM_BITS, comm);
             self.local_out.copy_from_slice(&temp_out);
         }
     }
 
-    fn send_pre_block<IO: CommunicationChannel>(&mut self, io: &mut IO, out: &mut [[u8; 32]], length: usize) {
+    fn send_pre_block<IO: CommunicationChannel>(&mut self, io: &mut IO, out: &mut [[u8; 32]], length: usize, comm: &mut u64) {
         let local_block_size = (length + NUM_BITS - 1) / NUM_BITS * NUM_BITS;
 
         let mut t = vec![[0u8; 32]; BLOCK_SIZE];
         let mut res = vec![[0u8; 32]; BLOCK_SIZE];
-        let mut tmp = io.receive_block::<32>();
+        let mut tmp = io.receive_block::<32>().expect("Failed to receive tmp to xor later");
 
         if let Some(prgs) = &mut self.g0 {
             for (i, prg) in prgs.iter_mut().enumerate() {
@@ -143,7 +143,6 @@ impl IKNP {
 
                 prg.random_32byte_block(&mut t[start..end]);
 
-                let cmp_t = io.receive_block::<32>();
                 if self.s[i] {
                     xor_blocks_arr(&mut res[start..end], &t[start..end], &tmp[start..end]);
                 } else {
@@ -155,9 +154,9 @@ impl IKNP {
         transpose(out, &res, NUM_BITS, BLOCK_SIZE);
     }
 
-    pub fn recv_pre<IO: CommunicationChannel>(&mut self, io: &mut IO, out: &mut [[u8; 32]], r: &[bool], length: usize) {
+    pub fn recv_pre<IO: CommunicationChannel>(&mut self, io: &mut IO, out: &mut [[u8; 32]], r: &[bool], length: usize, comm: &mut u64) {
         if !self.setup {
-            self.setup_recv(io, None, None);
+            self.setup_recv(io, None, None, comm);
         }
 
         let mut block_r = vec![[0u8; 32]; (length + NUM_BITS - 1) / NUM_BITS];
@@ -169,14 +168,14 @@ impl IKNP {
         let mut idx = 0;
 
         while idx + BLOCK_SIZE <= length {
-            self.recv_pre_block(io, &mut out[idx..idx+BLOCK_SIZE], &block_r[idx / NUM_BITS..(idx + BLOCK_SIZE) / NUM_BITS], BLOCK_SIZE);
+            self.recv_pre_block(io, &mut out[idx..idx+BLOCK_SIZE], &block_r[idx / NUM_BITS..(idx + BLOCK_SIZE) / NUM_BITS], BLOCK_SIZE, comm);
             idx += BLOCK_SIZE;
         }
 
         let remaining = length - idx;
         if remaining > 0 {
             let mut temp_out = vec![[0u8; 32]; BLOCK_SIZE];
-            self.recv_pre_block(io, &mut temp_out, &block_r[idx / NUM_BITS..], remaining);
+            self.recv_pre_block(io, &mut temp_out, &block_r[idx / NUM_BITS..], remaining, comm);
             out[idx..].copy_from_slice(&temp_out[..remaining]);
         }
 
@@ -190,12 +189,12 @@ impl IKNP {
             }
             self.local_r.copy_from_slice(&local_r);
             let mut temp_out = vec![[0u8; 32]; BLOCK_SIZE];
-            self.recv_pre_block(io, &mut temp_out, &local_r_block, 2 * NUM_BITS);
+            self.recv_pre_block(io, &mut temp_out, &local_r_block, 2 * NUM_BITS, comm);
             self.local_out.copy_from_slice(&temp_out);
         }
     }
 
-    fn recv_pre_block<IO: CommunicationChannel>(&mut self, io: &mut IO, out: &mut [[u8; 32]], r: &[[u8; 32]], length: usize) {
+    fn recv_pre_block<IO: CommunicationChannel>(&mut self, io: &mut IO, out: &mut [[u8; 32]], r: &[[u8; 32]], length: usize, comm: &mut u64) {
         let mut t = vec![[0u8; 32]; BLOCK_SIZE];
         let mut tmp = vec![[0u8; 32]; BLOCK_SIZE];
         let mut res = vec![[0u8; 32]; BLOCK_SIZE];
@@ -214,23 +213,16 @@ impl IKNP {
             }
         }
 
-        io.send_block::<32>(&tmp);
-
-        for i in 0..NUM_BITS {
-            let start = i * BLOCK_SIZE / NUM_BITS;
-            let end = start + local_block_size / NUM_BITS;
-            io.send_block::<32>(&t[start..end]);
-
-        }
+        *comm += io.send_block::<32>(&tmp).expect("Sending tmp failed");
 
         transpose(out, &t, NUM_BITS, BLOCK_SIZE);
     }
 
-    pub fn send_cot<IO: CommunicationChannel>(&mut self, io: &mut IO, data: &mut [[u8; 32]], length: usize) {
-        self.send_pre(io, data, length);
+    pub fn send_cot<IO: CommunicationChannel>(&mut self, io: &mut IO, data: &mut [[u8; 32]], length: usize, comm: &mut u64) {
+        self.send_pre(io, data, length, comm);
 
         if self.malicious {
-            if !self.send_check(io, data, length) {
+            if !self.send_check(io, data, length, comm) {
                 // panic!("OT Extension check failed");
                 panic!("OT Extension check failed");
             } else {
@@ -239,15 +231,15 @@ impl IKNP {
         }
     }
 
-    pub fn recv_cot<IO: CommunicationChannel>(&mut self, io: &mut IO, data: &mut [[u8; 32]], r: &[bool], length: usize) {
-        self.recv_pre(io, data, r, length);
+    pub fn recv_cot<IO: CommunicationChannel>(&mut self, io: &mut IO, data: &mut [[u8; 32]], r: &[bool], length: usize, comm: &mut u64) {
+        self.recv_pre(io, data, r, length, comm);
 
         if self.malicious {
-            self.recv_check(io, data, r, length);
+            self.recv_check(io, data, r, length, comm);
         }
     }
 
-    pub fn send_check<IO: CommunicationChannel>(&mut self, io: &mut IO, out: &[[u8; 32]], length: usize) -> bool {
+    pub fn send_check<IO: CommunicationChannel>(&mut self, io: &mut IO, out: &[[u8; 32]], length: usize, comm: &mut u64) -> bool {
         let mut seed2 = [0u8; 16];
         let mut x = [0u8; 32];
         let mut t = [[0u8; 32]; 2];
@@ -257,7 +249,7 @@ impl IKNP {
         q[0] = [0u8; 32];
         q[1] = [0u8; 32];
 
-        seed2 = io.receive_block::<16>()[0];
+        seed2 = io.receive_block::<16>().expect("Failed to receive seed")[0];
         io.flush();
 
         // println!("Seed received: {:?}", seed2);
@@ -282,9 +274,9 @@ impl IKNP {
         vector_inn_prdt_sum_no_red(&mut tmp, &chi, &self.local_out);
         xor_blocks(&mut q, &tmp);
 
-        x = io.receive_block::<32>()[0];
+        x = io.receive_block::<32>().expect("Failed to receive x")[0];
         // Receive t
-        let received_data = io.receive_block::<32>();
+        let received_data = io.receive_block::<32>().expect("Failed to receive t");
         assert_eq!(received_data.len(), 2, "Expected exactly 2 elements in received data");
         t = [received_data[0], received_data[1]]; // Convert Vec to array
 
@@ -295,7 +287,7 @@ impl IKNP {
         cmp_blocks(&q, &t)
     }
 
-    pub fn recv_check<IO: CommunicationChannel>(&mut self, io: &mut IO, out: &[[u8; 32]], r: &[bool], length: usize) {
+    pub fn recv_check<IO: CommunicationChannel>(&mut self, io: &mut IO, out: &[[u8; 32]], r: &[bool], length: usize, comm: &mut u64) {
         let select = [[0u8; 32], [255u8; 32]]; // zero_block and all_one_block
         let mut seed2 = [0u8; 16];
         let mut x = [0u8; 32];
@@ -312,7 +304,7 @@ impl IKNP {
 
         // println!("Seed sent: {:?}", seed2);
 
-        io.send_block::<16>(&[seed2]);
+        *comm += io.send_block::<16>(&[seed2]).expect("Failed to send seed");
         io.flush();
 
         let mut chi_prg = PRG::new(Some(&seed2), 0);
@@ -353,8 +345,8 @@ impl IKNP {
             }
         }
 
-        io.send_block::<32>(&[x]);
-        io.send_block::<32>(&t);
+        *comm += io.send_block::<32>(&[x]).expect("Failed to send x");
+        *comm += io.send_block::<32>(&t).expect("Failed to send t");
     }
 }
 

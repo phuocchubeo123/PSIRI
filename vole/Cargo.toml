@@ -27,16 +27,10 @@ default = ["parallel"]
 parallel = ["dep:rayon", "dep:lambdaworks-crypto"]
 
 [[bin]]
-name = "sender_ot"
+name = "ot"
 
 [[bin]]
-name = "receiver_ot"
-
-[[bin]]
-name = "sender_cope"
-
-[[bin]]
-name = "receiver_cope"
+name = "cope"
 
 [[bin]]
 name = "test_field"
@@ -48,43 +42,25 @@ name = "receiver_tcp"
 name = "sender_tcp"
 
 [[bin]]
-name = "sender_base_svole"
+name = "base_svole"
 
 [[bin]]
-name = "receiver_base_svole"
-
-[[bin]]
-name = "sender_iknp"
-
-[[bin]]
-name = "receiver_iknp"
+name = "iknp"
 
 [[bin]]
 name = "test_mul"
 
 [[bin]]
-name = "sender_base_cot"
+name = "base_cot"
 
 [[bin]]
-name = "receiver_base_cot"
+name = "spfss"
 
 [[bin]]
-name = "sender_spfss"
+name = "mpfss"
 
 [[bin]]
-name = "receiver_spfss"
-
-[[bin]]
-name = "sender_mpfss"
-
-[[bin]]
-name = "receiver_mpfss"
-
-[[bin]]
-name = "sender_vole_triple"
-
-[[bin]]
-name = "receiver_vole_triple"
+name = "vole_triple"
 
 [[bin]]
 name = "test_block"

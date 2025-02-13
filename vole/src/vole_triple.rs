@@ -209,13 +209,13 @@ pub struct VoleTriple {
 }
 
 impl VoleTriple {
-    pub fn new<IO: CommunicationChannel>(party: usize, malicious: bool, io: &mut IO, param: PrimalLPNParameterFp61) -> Self {
+    pub fn new<IO: CommunicationChannel>(party: usize, malicious: bool, io: &mut IO, param: PrimalLPNParameterFp61, comm: &mut u64) -> Self {
         let n_pre = param.n_pre;
         let t_pre = param.t_pre;
         let n = param.n;
         let t = param.t;
         let mut cot = BaseCot::new(party, malicious);
-        cot.cot_gen_pre(io, None);
+        cot.cot_gen_pre(io, None, comm);
 
         VoleTriple {
             party: party,
@@ -242,25 +242,25 @@ impl VoleTriple {
         }
     }
 
-    pub fn extend_send<IO: CommunicationChannel>(&mut self, io: &mut IO, y: &mut [FE], mpfss: &mut MpfssReg, pre_ot: &mut OTPre, lpn: &mut Lpn, key: &[FE], t: usize) {
+    pub fn extend_send<IO: CommunicationChannel>(&mut self, io: &mut IO, y: &mut [FE], mpfss: &mut MpfssReg, pre_ot: &mut OTPre, lpn: &mut Lpn, key: &[FE], t: usize, comm: &mut u64) {
         mpfss.sender_init(self.delta);
-        mpfss.mpfss_sender(io, pre_ot, key, y);
+        mpfss.mpfss_sender(io, pre_ot, key, y, comm);
         pre_ot.reset();
 
         // // y is already a regular vector (concat of n/t unit vectors), which corresponses to the noise in LPN
         lpn.compute_send(y, &key[t+1..]);
     }
 
-    pub fn extend_recv<IO: CommunicationChannel>(&mut self, io: &mut IO, y: &mut [FE], z: &mut [FE], mpfss: &mut MpfssReg, pre_ot: &mut OTPre, lpn: &mut Lpn, mac: &[FE], u: &[FE], t: usize) {
+    pub fn extend_recv<IO: CommunicationChannel>(&mut self, io: &mut IO, y: &mut [FE], z: &mut [FE], mpfss: &mut MpfssReg, pre_ot: &mut OTPre, lpn: &mut Lpn, mac: &[FE], u: &[FE], t: usize, comm: &mut u64) {
         mpfss.receiver_init();
-        mpfss.mpfss_receiver(io, pre_ot, mac, u, y, z);
+        mpfss.mpfss_receiver(io, pre_ot, mac, u, y, z, comm);
         pre_ot.reset();
         lpn.compute_recv(y, z, &mac[t+1..], &u[t+1..]);
     }
 
-    pub fn setup_sender<IO: CommunicationChannel>(&mut self, io: &mut IO, delta: FE) {
+    pub fn setup_sender<IO: CommunicationChannel>(&mut self, io: &mut IO, delta: FE, comm: &mut u64) {
         self.delta = delta;
-        io.send_stark252(&[self.delta]).expect("Cannot send test delta"); //debug only
+        *comm += io.send_stark252(&[self.delta]).expect("Cannot send test delta"); //debug only
 
         let seed_pre0 = [0u8; 16];
         // let seed_field_pre0 = [[0u8; 16]; 4];
@@ -272,20 +272,20 @@ impl VoleTriple {
         let mut pre_ot_ini0 = OTPre::new(self.param.log_bin_sz_pre0, self.param.t_pre0);
 
         let m_pre0 = self.param.log_bin_sz_pre0 * self.param.t_pre0;
-        self.cot.cot_gen_preot(io, &mut pre_ot_ini0, m_pre0, None);
+        self.cot.cot_gen_preot(io, &mut pre_ot_ini0, m_pre0, None, comm);
 
         // mac = key + delta * u
         let triple_n0 = 1 + self.param.t_pre0 + self.param.k_pre0;
         let mut key = vec![FE::zero(); triple_n0];
-        let mut svole0 = BaseSvole::new_sender(io, self.delta);
-        svole0.triple_gen_send(io, &mut key, triple_n0);
+        let mut svole0 = BaseSvole::new_sender(io, self.delta, comm);
+        svole0.triple_gen_send(io, &mut key, triple_n0, comm);
 
         // println!("Test base svole: {:?}", key[0]);
 
         io.flush();
 
         let mut pre_y0 = vec![FE::zero(); self.param.n_pre0];
-        self.extend_send(io, &mut pre_y0, &mut mpfss_pre0, &mut pre_ot_ini0, &mut lpn_pre0, &key, self.param.t_pre0);
+        self.extend_send(io, &mut pre_y0, &mut mpfss_pre0, &mut pre_ot_ini0, &mut lpn_pre0, &key, self.param.t_pre0, comm);
 
         // println!("Test LPN: {:?}", pre_y0[0]);
 
@@ -299,19 +299,19 @@ impl VoleTriple {
         let mut pre_ot_ini = OTPre::new(self.param.log_bin_sz_pre, self.param.t_pre);
 
         let m_pre = self.param.log_bin_sz_pre * self.param.t_pre;
-        self.cot.cot_gen_preot(io, &mut pre_ot_ini, m_pre, None);
+        self.cot.cot_gen_preot(io, &mut pre_ot_ini, m_pre, None, comm);
 
         // 
         let triple_n = 1 + self.param.t_pre + self.param.k_pre;        
         let mut pre_y = vec![FE::zero(); self.param.n_pre];
-        self.extend_send(io, &mut pre_y, &mut mpfss_pre, &mut pre_ot_ini, &mut lpn_pre, &pre_y0[..triple_n], self.param.t_pre);
+        self.extend_send(io, &mut pre_y, &mut mpfss_pre, &mut pre_ot_ini, &mut lpn_pre, &pre_y0[..triple_n], self.param.t_pre, comm);
         self.pre_y.copy_from_slice(&pre_y);
 
         self.pre_ot_inplace = true;
     }
 
-    pub fn setup_receiver<IO: CommunicationChannel>(&mut self, io: &mut IO) {
-        self.delta = io.receive_stark252(1).expect("Failed to receive test delta")[0]; //debug only
+    pub fn setup_receiver<IO: CommunicationChannel>(&mut self, io: &mut IO, comm: &mut u64) {
+        self.delta = io.receive_stark252().expect("Failed to receive test delta")[0]; //debug only
 
         let seed_pre0 = [0u8; 16];
         let mut seed_field_pre0 = [0u8; 32];
@@ -322,14 +322,14 @@ impl VoleTriple {
         let mut pre_ot_ini0 = OTPre::new(self.param.log_bin_sz_pre0, self.param.t_pre0);
 
         let m_pre0 = self.param.log_bin_sz_pre0 * self.param.t_pre0;
-        self.cot.cot_gen_preot(io, &mut pre_ot_ini0, m_pre0, None);
+        self.cot.cot_gen_preot(io, &mut pre_ot_ini0, m_pre0, None, comm);
 
         // mac = key + delta * u
         let triple_n0 = 1 + self.param.t_pre0 + self.param.k_pre0;
         let mut mac = vec![FE::zero(); triple_n0];
         let mut u = vec![FE::zero(); triple_n0];
-        let mut svole0 = BaseSvole::new_receiver(io);
-        svole0.triple_gen_recv(io, &mut mac, &mut u, triple_n0);
+        let mut svole0 = BaseSvole::new_receiver(io, comm);
+        svole0.triple_gen_recv(io, &mut mac, &mut u, triple_n0, comm);
 
         // println!("Test base svole: {:?}", mac[0] - u[0] * self.delta);
 
@@ -337,7 +337,7 @@ impl VoleTriple {
 
         let mut pre_y0 = vec![FE::zero(); self.param.n_pre0];
         let mut pre_z0 = vec![FE::zero(); self.param.n_pre0];
-        self.extend_recv(io, &mut pre_y0, &mut pre_z0, &mut mpfss_pre0, &mut pre_ot_ini0, &mut lpn_pre0, &mac, &u, self.param.t_pre0);
+        self.extend_recv(io, &mut pre_y0, &mut pre_z0, &mut mpfss_pre0, &mut pre_ot_ini0, &mut lpn_pre0, &mac, &u, self.param.t_pre0, comm);
 
         let seed_pre = [0u8; 16];
         let mut seed_field_pre = [0u8; 32];
@@ -348,13 +348,13 @@ impl VoleTriple {
         let mut pre_ot_ini = OTPre::new(self.param.log_bin_sz_pre, self.param.t_pre);
 
         let m_pre = self.param.log_bin_sz_pre * self.param.t_pre;
-        self.cot.cot_gen_preot(io, &mut pre_ot_ini, m_pre, None);
+        self.cot.cot_gen_preot(io, &mut pre_ot_ini, m_pre, None, comm);
 
         // 
         let triple_n = 1 + self.param.t_pre + self.param.k_pre;        
         let mut pre_y = vec![FE::zero(); self.param.n_pre];
         let mut pre_z = vec![FE::zero(); self.param.n_pre];
-        self.extend_recv(io, &mut pre_y, &mut pre_z, &mut mpfss_pre, &mut pre_ot_ini, &mut lpn_pre, &pre_y0[..triple_n], &pre_z0[..triple_n], self.param.t_pre);
+        self.extend_recv(io, &mut pre_y, &mut pre_z, &mut mpfss_pre, &mut pre_ot_ini, &mut lpn_pre, &pre_y0[..triple_n], &pre_z0[..triple_n], self.param.t_pre, comm);
         self.pre_y.copy_from_slice(&pre_y);
         self.pre_z.copy_from_slice(&pre_z);
 
@@ -368,22 +368,22 @@ impl VoleTriple {
         self.extend_initialized = true;
     }
 
-    pub fn extend_once<IO: CommunicationChannel>(&mut self, io: &mut IO, data_y: &mut [FE], data_z: &mut [FE], mpfss: &mut MpfssReg, pre_ot: &mut OTPre, lpn: &mut Lpn) {
-        self.cot.cot_gen_preot(io, pre_ot, self.param.t * self.param.log_bin_sz, None);
+    pub fn extend_once<IO: CommunicationChannel>(&mut self, io: &mut IO, data_y: &mut [FE], data_z: &mut [FE], mpfss: &mut MpfssReg, pre_ot: &mut OTPre, lpn: &mut Lpn, comm: &mut u64) {
+        self.cot.cot_gen_preot(io, pre_ot, self.param.t * self.param.log_bin_sz, None, comm);
         let mut pre_y = vec![FE::zero(); self.m];
         pre_y.copy_from_slice(&self.pre_y[..self.m]);
         let mut pre_z = vec![FE::zero(); self.m];
         pre_z.copy_from_slice(&self.pre_z[..self.m]);
         if self.party == 0{
-            self.extend_send(io, data_y, mpfss, pre_ot, lpn, &pre_y, self.param.t);
+            self.extend_send(io, data_y, mpfss, pre_ot, lpn, &pre_y, self.param.t, comm);
         } else {
-            self.extend_recv(io, data_y, data_z, mpfss, pre_ot, lpn, &pre_y, &pre_z, self.param.t);
+            self.extend_recv(io, data_y, data_z, mpfss, pre_ot, lpn, &pre_y, &pre_z, self.param.t, comm);
         }
         self.pre_y[..self.m].copy_from_slice(&data_y[self.ot_limit..]);
         self.pre_z[..self.m].copy_from_slice(&data_z[self.ot_limit..]);
     }
 
-    pub fn extend<IO: CommunicationChannel>(&mut self, io: &mut IO, data_y: &mut [FE], data_z: &mut [FE], num: usize) {
+    pub fn extend<IO: CommunicationChannel>(&mut self, io: &mut IO, data_y: &mut [FE], data_z: &mut [FE], num: usize, comm: &mut u64) {
         if self.extend_initialized == false {
             panic!("Run extend_initialization first!");
         }
@@ -422,7 +422,7 @@ impl VoleTriple {
         mpfss.set_malicious();
 
         for i in 0..round_inplace {
-            self.extend_once(io, &mut data_y[copied..copied+self.param.n], &mut data_z[copied..copied+self.param.n], &mut mpfss, &mut pre_ot, &mut lpn);
+            self.extend_once(io, &mut data_y[copied..copied+self.param.n], &mut data_z[copied..copied+self.param.n], &mut mpfss, &mut pre_ot, &mut lpn, comm);
             self.ot_used = self.ot_limit;
             copied += self.ot_limit;
         }
@@ -430,7 +430,7 @@ impl VoleTriple {
         if round_memcpy {
             let mut tmp_y = vec![FE::zero(); self.param.n];
             let mut tmp_z = vec![FE::zero(); self.param.n];
-            self.extend_once(io, &mut tmp_y, &mut tmp_z, &mut mpfss, &mut pre_ot, &mut lpn);
+            self.extend_once(io, &mut tmp_y, &mut tmp_z, &mut mpfss, &mut pre_ot, &mut lpn, comm);
             self.vole_y.copy_from_slice(&tmp_y);
             self.vole_z.copy_from_slice(&tmp_z);
             data_y[copied..copied+self.ot_limit].copy_from_slice(&tmp_y[..self.ot_limit]);
@@ -442,7 +442,7 @@ impl VoleTriple {
         if last_round_ot > 0 {
             let mut tmp_y = vec![FE::zero(); self.param.n];
             let mut tmp_z = vec![FE::zero(); self.param.n];
-            self.extend_once(io, &mut tmp_y, &mut tmp_z, &mut mpfss, &mut pre_ot, &mut lpn);
+            self.extend_once(io, &mut tmp_y, &mut tmp_z, &mut mpfss, &mut pre_ot, &mut lpn, comm);
             self.vole_y.copy_from_slice(&tmp_y);
             self.vole_z.copy_from_slice(&tmp_z);
             data_y[copied..].copy_from_slice(&tmp_y[..last_round_ot]);
@@ -462,8 +462,8 @@ impl VoleTriple {
             io.send_stark252(&y).expect("Failed to send k test.");
         } else {
             // want y = k + delta * z
-            let delta = io.receive_stark252(1).expect("Failed to receive delta test.")[0];
-            let k = io.receive_stark252(size).expect("Failed to receive k test");
+            let delta = io.receive_stark252().expect("Failed to receive delta test.")[0];
+            let k = io.receive_stark252().expect("Failed to receive k test");
             for i in 0..size {
                 if y[i] != k[i] + delta * z[i] {
                     panic!("tripple error at index {}", i);

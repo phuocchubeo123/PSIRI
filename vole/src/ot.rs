@@ -13,7 +13,7 @@ impl OTCO {
     }
 
     /// Sender's OT implementation
-    pub fn send<IO: CommunicationChannel>(&mut self, io: &mut IO, data0: &[[u8; 16]], data1: &[[u8; 16]]) {
+    pub fn send<IO: CommunicationChannel>(&mut self, io: &mut IO, data0: &[[u8; 16]], data1: &[[u8; 16]], comm: &mut u64) {
         let length = data0.len();
         let mut rng = rand::thread_rng();
 
@@ -26,7 +26,7 @@ impl OTCO {
 
         // Send A to the receiver
         let A_encoded = A_affine.to_encoded_point(false);
-        io.send_point(&A_encoded);
+        *comm += io.send_point(&A_encoded).expect("Cannot send encoded A in OTCO");
 
         // Compute (A * a)^-1
         let mut A_a_inverse = A * a;
@@ -37,7 +37,7 @@ impl OTCO {
 
         // Receive B points and compute BA points
         for i in 0..length {
-            let b_point = io.receive_point();
+            let b_point = io.receive_point().expect("Cannot receive b_point");
             let b_affine = AffinePoint::from_encoded_point(&b_point).unwrap();
                 // .expect("Failed to decode AffinePoint from EncodedPoint");
             let B_projective = ProjectivePoint::from(b_affine);
@@ -66,19 +66,19 @@ impl OTCO {
             let encrypted0 = xor_blocks(&data0[i], &key_b);
             let encrypted1 = xor_blocks(&data1[i], &key_ba);
 
-            io.send_block::<16>(&[encrypted0, encrypted1]);
+            *comm += io.send_block::<16>(&[encrypted0, encrypted1]).expect("Cannot send encrypted data in OTCO sender.");
         }
     }
 
     /// Receiver's OT implementation
-    pub fn recv<IO: CommunicationChannel>(&mut self, io: &mut IO, choices: &[bool], output: &mut Vec<[u8; 16]>) {
+    pub fn recv<IO: CommunicationChannel>(&mut self, io: &mut IO, choices: &[bool], output: &mut Vec<[u8; 16]>, comm: &mut u64) {
         let length = choices.len();
         let mut rng = rand::thread_rng();
 
         // Generate random scalars `b`
         let b_scalars: Vec<Scalar> = (0..length).map(|_| Scalar::random(&mut rng)).collect();
 
-        let A_encoded = io.receive_point();
+        let A_encoded = io.receive_point().expect("Cannot receive encoded A");
         let A_affine = AffinePoint::from_encoded_point(&A_encoded).unwrap();
             // .expect("Invalid A point received");
         let A_projective = ProjectivePoint::from(A_affine);
@@ -93,7 +93,7 @@ impl OTCO {
             }
 
             let B_encoded = B_projective.to_affine().to_encoded_point(false);
-            io.send_point(&B_encoded);
+            *comm += io.send_point(&B_encoded).expect("Cannot send B encoded");
         }
 
         io.flush();
@@ -106,7 +106,7 @@ impl OTCO {
                 i as u64,
             );
 
-            let encrypted = io.receive_block::<16>();
+            let encrypted = io.receive_block::<16>().expect("Cannot receive encrypted data from sender");
             output.push(if choices[i] {
                 xor_blocks(&encrypted[1], &key_as)
             } else {

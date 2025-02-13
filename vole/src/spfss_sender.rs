@@ -50,7 +50,7 @@ impl SpfssSenderFp {
     }
 
     /// Send OT messages and secret sum.
-    pub fn send<IO: CommunicationChannel>(&mut self, io: &mut IO, ot: &mut OTPre, s: usize) {
+    pub fn send<IO: CommunicationChannel>(&mut self, io: &mut IO, ot: &mut OTPre, s: usize, comm: &mut u64) {
         let ot_msg_0 = self.m0
             .iter()
             .map(|x| x.to_bytes_le())
@@ -60,8 +60,8 @@ impl SpfssSenderFp {
             .map(|x| x.to_bytes_le())
             .collect::<Vec<[u8; 32]>>();
 
-        ot.send(io, &ot_msg_0, &ot_msg_1, self.depth - 1, s);
-        io.send_stark252(&[self.secret_sum]).expect("Failed to send secret sum.");
+        ot.send(io, &ot_msg_0, &ot_msg_1, self.depth - 1, s, comm);
+        *comm += io.send_stark252(&[self.secret_sum]).expect("Failed to send secret sum.");
     }
 
     /// Generate the GGM tree from the top.
@@ -98,7 +98,7 @@ impl SpfssSenderFp {
     }
 
     /// Consistency check: Protocol PI_spsVOLE
-    pub fn consistency_check<IO: CommunicationChannel>(&mut self, io: &mut IO, y: FE) {
+    pub fn consistency_check<IO: CommunicationChannel>(&mut self, io: &mut IO, y: FE, comm: &mut u64) {
         // z = y + delta * beta
 
         let hash = Hash::new();
@@ -108,7 +108,7 @@ impl SpfssSenderFp {
         uni_hash_coeff_gen(&mut chi, uni_hash_seed, self.leave_n);
 
         // Receive x_star
-        let x_star = io.receive_stark252(1).expect("Failed to receive x_star")[0];
+        let x_star = io.receive_stark252().expect("Failed to receive x_star")[0];
 
         // Compute y_star
         let y_star = y - x_star * self.delta;
@@ -119,10 +119,10 @@ impl SpfssSenderFp {
         println!("v: {:?}", v);
 
         // Send V
-        io.send_stark252(&[v]).expect("Failed to send V");
+        *comm += io.send_stark252(&[v]).expect("Failed to send V");
     }
 
-    pub fn consistency_check_msg_gen<IO: CommunicationChannel>(&mut self, v: &mut FE, io: &mut IO, seed: FE) {
+    pub fn consistency_check_msg_gen(&mut self, v: &mut FE, seed: FE) {
         let mut chi = vec![FE::zero(); self.leave_n];
 
         let hash = Hash::new();

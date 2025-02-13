@@ -54,7 +54,7 @@ pub struct OprfSender {
 }
 
 impl OprfSender {
-    pub fn new<IO: CommunicationChannel>(io: &mut IO, n: usize, malicious: bool, param: PrimalLPNParameterFp61) -> Self {
+    pub fn new<IO: CommunicationChannel>(io: &mut IO, n: usize, malicious: bool, param: PrimalLPNParameterFp61, comm: &mut u64) -> Self {
         // Setup delta
         let mut prg = PRG::new(None, 0);
         let mut FE_vec = [FE::zero(); 1];
@@ -62,13 +62,13 @@ impl OprfSender {
         let delta = FE_vec[0]; 
 
         // Receive OKVS seed from the receiver
-        let r = io.receive_block::<16>();
+        let r = io.receive_block::<16>().expect("Failed to receive okvs seed");
         let r1 = r[0];
         let r2 = r[1];
         let okvs = RbOkvs::new(n, &r1, &r2);
 
-        let mut vole_triple = VoleTriple::new(0, malicious, io, param);
-        vole_triple.setup_sender(io, delta);
+        let mut vole_triple = VoleTriple::new(0, malicious, io, param, comm);
+        vole_triple.setup_sender(io, delta, comm);
         vole_triple.extend_initialization();
 
         let fixed_points_num = 2 * n;
@@ -121,10 +121,6 @@ impl OprfSender {
 
         self.small_roots_of_unity_inv = (0..self.fixed_points_num).into_par_iter().map(|i| self.roots_of_unity_inv[i*4]).collect();
 
-        // for i in 0..roots_of_unity_inv.len() {
-        //     assert_eq!(roots_of_unity_inv[i] * roots_of_unity[i], FE::one(), "wrong inv of roots of unity");
-        // }
-
         assert_eq!(values.len(), self.n, "The number of values of Sender should be n");
         // Low degree extension to later match with output commitment
         let mut X: Vec<FE> = Vec::with_capacity(2*self.n);
@@ -147,18 +143,18 @@ impl OprfSender {
     }
 
 
-    pub fn receive_P_commit<IO: CommunicationChannel>(&mut self, io: &mut IO) {
+    pub fn receive_P_commit<IO: CommunicationChannel>(&mut self, io: &mut IO, comm: &mut u64) {
         // Receive commitment of P_new
-        self.P_new_merkle_root = io.receive_block::<32>()[0];
+        self.P_new_merkle_root = io.receive_block::<32>().expect("Failed to receive merkle root of P")[0];
         self.transcript.append_bytes(&self.P_new_merkle_root);
     }
 
-    pub fn send_X_commit<IO: CommunicationChannel>(&mut self, io: &mut IO) {
+    pub fn send_X_commit<IO: CommunicationChannel>(&mut self, io: &mut IO, comm: &mut u64) {
         self.transcript.append_bytes(&self.X_new_commit.merkle_tree.root);
-        io.send_block::<32>(&[self.X_new_commit.merkle_tree.root]);
+        *comm += io.send_block::<32>(&[self.X_new_commit.merkle_tree.root]).expect("Failed to send merkle root of X_new");
     }
 
-    pub fn send<IO: CommunicationChannel>(&mut self, io: &mut IO, values: &[FE]) {
+    pub fn send<IO: CommunicationChannel>(&mut self, io: &mut IO, values: &[FE], comm: &mut u64) {
         // Creating ws and send H(ws) to the receiver
         let mut prg = PRG::new(None, 0);
         let mut FE_vec = [FE::zero(); 1];
@@ -171,7 +167,7 @@ impl OprfSender {
             let mut ws_vec = [ws];
             hash.permute_block(&mut ws_vec, 1);
             hash_buf = ws_vec[0];
-            io.send_stark252(&[hash_buf]).expect("Failed to send H(ws) to the receiver");
+            *comm += io.send_stark252(&[hash_buf]).expect("Failed to send H(ws) to the receiver");
 
             self.transcript.append_bytes(&hash_buf.to_bytes_le());
         }
@@ -180,21 +176,21 @@ impl OprfSender {
         // c = b + a * delta
         let start = Instant::now();
         let mut z = vec![FE::zero(); self.okvs.columns];
-        self.vole_sender.extend(io, &mut self.b, &mut z, self.okvs.columns); 
+        self.vole_sender.extend(io, &mut self.b, &mut z, self.okvs.columns, comm); 
         println!("Time to extend Vole: {:?}", start.elapsed());
 
         // Get w = ws + wr;
         if self.malicious {
-            let wr = io.receive_stark252(1).expect("Failed to receive wr from the receiver")[0];
+            let wr = io.receive_stark252().expect("Failed to receive wr from the receiver")[0];
             self.w = ws + wr;
-            io.send_stark252(&[ws]).expect("Failed to send ws to the receiver");
+            *comm += io.send_stark252(&[ws]).expect("Failed to send ws to the receiver");
             self.transcript.append_bytes(&wr.to_bytes_le());
             self.transcript.append_bytes(&self.w.to_bytes_le());
         }
 
         let start = Instant::now();
         // Receive A = P + a from the receiver and get K = b + A * delta
-        let A = io.receive_stark252(self.okvs.columns).expect("Failed to receive A from the receiver");
+        let A = io.receive_stark252().expect("Failed to receive A from the receiver");
         let mut K = vec![FE::zero(); self.okvs.columns];
         for i in 0..self.okvs.columns {
             self.K[i] = self.b[i] + A[i] * self.delta;
@@ -207,11 +203,11 @@ impl OprfSender {
         println!("Time to prepare output consistency: {:?}", start.elapsed());
 
         let start = Instant::now();
-        self.receive_vole_consistency(io, &A);
+        self.receive_vole_consistency(io, &A, comm);
         println!("Time to receive VOLE consistency: {:?}", start.elapsed());
 
         let start = Instant::now();
-        self.send_output_consistency(io);
+        self.send_output_consistency(io, comm);
         println!("Time to send output consistency: {:?}", start.elapsed());
     }
 
@@ -342,17 +338,17 @@ impl OprfSender {
         println!("End of output hashing: {:?}", start.elapsed());
     }
 
-    pub fn send_output_consistency<IO: CommunicationChannel>(&mut self, io: &mut IO) {
+    pub fn send_output_consistency<IO: CommunicationChannel>(&mut self, io: &mut IO, comm: &mut u64) {
         let start = Instant::now();
-        io.send_block::<32>(&[self.S_new_commit.merkle_tree.root]);
+        *comm += io.send_block::<32>(&[self.S_new_commit.merkle_tree.root]).expect("Failed to send merkle root of S_new");
         self.transcript.append_bytes(&self.S_new_commit.merkle_tree.root);
 
         let T_new_merkle_roots: Vec<[u8; 32]> = self.T_new_fri_layers
             .iter()
             .map(|fri_layer| fri_layer.merkle_tree.root)
             .collect(); 
-        io.send_stark252(&[self.T_new_last_value]).expect("Cannot send last value of T");
-        io.send_block::<32>(&T_new_merkle_roots);
+        *comm += io.send_stark252(&[self.T_new_last_value]).expect("Cannot send last value of T");
+        *comm += io.send_block::<32>(&T_new_merkle_roots).expect("Failed to send merkle root of T_new");
 
         self.transcript.append_bytes(&self.T_new_last_value.to_bytes_le());
         self.transcript.append_bytes(&T_new_merkle_roots[0]);
@@ -369,9 +365,9 @@ impl OprfSender {
             .map(|&iota| self.T_new_fri_layers[0].evaluation[iota])
             .collect();
 
-        io.send_stark252(&T_new_evaluations).expect("Cannot send evaluations of T_new");
+        *comm += io.send_stark252(&T_new_evaluations).expect("Cannot send evaluations of T_new");
         let T_new_decommit = query_phase(&self.T_new_fri_layers, &iotas);
-        send_decommit(io, &T_new_decommit);
+        send_decommit(io, &T_new_decommit, comm);
 
         // Now prove that S_new and X_new are consistent
         let iotas_consistency: Vec<usize> = (0..NUM_QUERIES).map(|_| {
@@ -386,34 +382,34 @@ impl OprfSender {
             .par_iter()
             .map(|&iota| self.S_new_commit.evaluation[iota])
             .collect();
-        io.send_stark252(&S_new_evaluations).expect("Cannot send evaluations of S_new");
+        *comm += io.send_stark252(&S_new_evaluations).expect("Cannot send evaluations of S_new");
         let S_new_evaluations_sym: Vec<FE> = iotas_consistency
             .par_iter()
             .map(|&iota| self.S_new_commit.evaluation[iota^1])
             .collect();
-        io.send_stark252(&S_new_evaluations_sym).expect("Cannot send sym evaluations of S_new");
+        *comm += io.send_stark252(&S_new_evaluations_sym).expect("Cannot send sym evaluations of S_new");
         let S_new_paths: Vec<Proof<Commitment>> = iotas_consistency
             .par_iter()
             .map(|&iota| self.S_new_commit.merkle_tree.get_proof_by_pos(iota>>1))
             .collect();
-        send_merkle_path(io, &S_new_paths);
+        send_merkle_path(io, &S_new_paths, comm);
 
         // Send evaluations and merkle paths for X_new
         let X_new_evaluations: Vec<FE> = iotas_consistency
             .par_iter()
             .map(|&iota| self.X_new_commit.evaluation[iota])
             .collect();
-        io.send_stark252(&X_new_evaluations).expect("Cannot send evaluations of X_new");
+        *comm += io.send_stark252(&X_new_evaluations).expect("Cannot send evaluations of X_new");
         let X_new_evaluations_sym: Vec<FE> = iotas_consistency
             .par_iter()
             .map(|&iota| self.X_new_commit.evaluation[iota^1])
             .collect();
-        io.send_stark252(&X_new_evaluations_sym).expect("Cannot send sym evaluations of X_new");
+        *comm += io.send_stark252(&X_new_evaluations_sym).expect("Cannot send sym evaluations of X_new");
         let X_new_paths: Vec<Proof<Commitment>> = iotas_consistency
             .par_iter()
             .map(|&iota| self.X_new_commit.merkle_tree.get_proof_by_pos(iota>>1))
             .collect();
-        send_merkle_path(io, &X_new_paths);
+        send_merkle_path(io, &X_new_paths, comm);
 
 
         // Send evaluation and merkle paths for T_new
@@ -421,23 +417,23 @@ impl OprfSender {
             .par_iter()
             .map(|&iota| self.T_new_fri_layers[0].evaluation[iota])
             .collect();
-        io.send_stark252(&T_new_evaluations).expect("Cannot send evaluations of T_new");
+        *comm += io.send_stark252(&T_new_evaluations).expect("Cannot send evaluations of T_new");
         let T_new_evaluations_sym: Vec<FE> = iotas_consistency
             .par_iter()
             .map(|&iota| self.T_new_fri_layers[0].evaluation[iota^1])
             .collect();
-        io.send_stark252(&T_new_evaluations_sym).expect("Cannot send sym evaluations of T_new");
+        *comm += io.send_stark252(&T_new_evaluations_sym).expect("Cannot send sym evaluations of T_new");
 
         let T_new_paths: Vec<Proof<Commitment>> = iotas_consistency
             .par_iter()
             .map(|&iota| self.T_new_fri_layers[0].merkle_tree.get_proof_by_pos(iota>>1))
             .collect();
-        send_merkle_path(io, &T_new_paths);
+        send_merkle_path(io, &T_new_paths, comm);
 
 
         // Send the outputs and the verify path
         // Takes 1 second to send a million members
-        io.send_block::<32>(&self.outputs_byte);
+        *comm += io.send_block::<32>(&self.outputs_byte).expect("Failed to send output hashes");
 
         // Try to get the path from outputs_byte to merkle_root of S_new
         let outputs_byte_path = self.S_new_commit.merkle_tree.get_proof_by_pos(0).merkle_path;
@@ -445,14 +441,14 @@ impl OprfSender {
         let mut verify_path = vec![[0u8; 32]; 2];
         verify_path.copy_from_slice(&outputs_byte_path[self.log_fixed_points_num-1..]);
 
-        io.send_block::<32>(&verify_path);
+        *comm += io.send_block::<32>(&verify_path).expect("Failed to send verify path for output hashes");
     }
 
-    pub fn receive_vole_consistency<IO: CommunicationChannel>(&mut self, io: &mut IO, A: &[FE]) {
+    pub fn receive_vole_consistency<IO: CommunicationChannel>(&mut self, io: &mut IO, A: &[FE], comm: &mut u64) {
         // Run FRI degree test on Q
         // Receive commitment of Q
-        let Q_last_value = io.receive_stark252(1).expect("Failed to receive Q last value")[0];
-        let Q_merkle_roots = io.receive_block::<32>();
+        let Q_last_value = io.receive_stark252().expect("Failed to receive Q last value")[0];
+        let Q_merkle_roots = io.receive_block::<32>().expect("Failed to receive merkle roots of Q");
         let Q_merkle_root = Q_merkle_roots[0];
 
         self.transcript.append_bytes(&Q_last_value.to_bytes_le());
@@ -465,9 +461,9 @@ impl OprfSender {
             iota as usize
         }).collect();
         // Receive evaluations
-        let Q_evaluations = io.receive_stark252(NUM_QUERIES).expect("Cannot receive evaluations of Q");
+        let Q_evaluations = io.receive_stark252().expect("Cannot receive evaluations of Q");
         // Receive back the decommitments of P
-        let Q_decommit = receive_decommit(io);
+        let Q_decommit = receive_decommit(io, comm);
         // Verify decommitment
         
         iotas.par_iter().enumerate().for_each(|(i, &iota)| {
@@ -520,12 +516,12 @@ impl OprfSender {
 
         // Check consistency of VOLE
         // Receive evaluations on roots of unity of c
-        let c_evaluations = io.receive_stark252(NUM_QUERIES).expect("Cannot receive evaluations of c");
+        let c_evaluations = io.receive_stark252().expect("Cannot receive evaluations of c");
 
         // Receive evaluations on roots of unity of P_new and check with commitment
-        let P_new_evaluations = io.receive_stark252(NUM_QUERIES).expect("Cannot receive evaluations of P_new");
-        let P_new_evaluations_sym = io.receive_stark252(NUM_QUERIES).expect("Cannot receive evaluations sym of P_new");
-        let P_new_paths = receive_merkle_path(io);
+        let P_new_evaluations = io.receive_stark252().expect("Cannot receive evaluations of P_new");
+        let P_new_evaluations_sym = io.receive_stark252().expect("Cannot receive evaluations sym of P_new");
+        let P_new_paths = receive_merkle_path(io, comm);
         // Verify P_new_evaluations
         iotas_consistency
             .par_iter()
@@ -547,9 +543,9 @@ impl OprfSender {
             });
 
         // Receive evaluations on roots of unity of Q and check with commitment
-        let Q_evaluations = io.receive_stark252(NUM_QUERIES).expect("Cannot receive evaluations of Q");
-        let Q_evaluations_sym = io.receive_stark252(NUM_QUERIES).expect("Cannot receive evaluations sym of Q");
-        let Q_paths = receive_merkle_path(io);
+        let Q_evaluations = io.receive_stark252().expect("Cannot receive evaluations of Q");
+        let Q_evaluations_sym = io.receive_stark252().expect("Cannot receive evaluations sym of Q");
+        let Q_paths = receive_merkle_path(io, comm);
         // Verify Q_evaluations
         iotas_consistency
             .par_iter()

@@ -17,7 +17,7 @@ fn bench_32byte<IO: CommunicationChannel>(channel: &mut IO) {
 
     let start = Instant::now();
     for i in 0..size {
-        let x = channel.receive_block::<32>();
+        let x = channel.receive_block::<32>().unwrap();
     }
     let duration = start.elapsed();
 
@@ -35,7 +35,7 @@ fn main() {
     // Benchmark receive_stark252
     let start = Instant::now();
     let elements = channel
-        .receive_stark252(element_count)
+        .receive_stark252()
         .expect("Failed to receive elements");
     let duration = start.elapsed();
 

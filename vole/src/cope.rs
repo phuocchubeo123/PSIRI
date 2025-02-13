@@ -59,7 +59,7 @@ impl Cope {
         self.powers_of_two = powers;
     }
 
-    pub fn initialize_sender<IO: CommunicationChannel>(&mut self, io: &mut IO, delta: FE) {
+    pub fn initialize_sender<IO: CommunicationChannel>(&mut self, io: &mut IO, delta: FE, comm: &mut u64) {
         self.delta = Some(delta);
         self.delta_bool = Self::delta_to_bool(&delta, self.m);
         self.precompute_powers_of_two(); // Precompute powers of two
@@ -67,7 +67,7 @@ impl Cope {
         // Prepare keys using OTCO
         let mut k = Vec::new();
         let mut otco = OTCO::new();
-        otco.recv(io, &self.delta_bool, &mut k);
+        otco.recv(io, &self.delta_bool, &mut k, comm);
 
         // Initialize PRGs
         self.prg_g0 = Some(
@@ -85,7 +85,7 @@ impl Cope {
         assert_eq!(self.prg_g0.as_ref().unwrap().len(), self.m, "Mismatch in prg_g0 length after initialization");
     }
 
-    pub fn initialize_receiver<IO: CommunicationChannel>(&mut self, io: &mut IO) {
+    pub fn initialize_receiver<IO: CommunicationChannel>(&mut self, io: &mut IO, comm: &mut u64) {
         self.precompute_powers_of_two(); // Precompute powers of two
 
         let mut k0 = vec![[0u8; 16]; self.m];
@@ -98,7 +98,7 @@ impl Cope {
 
         // Use OTCO to send keys
         let mut otco = OTCO::new();
-        otco.send(io, &k0, &k1);
+        otco.send(io, &k0, &k1, comm);
 
         // Initialize PRGs
         self.prg_g0 = Some(
@@ -123,7 +123,7 @@ impl Cope {
         );
     }
 
-    pub fn extend_sender<IO: CommunicationChannel>(&mut self, io: &mut IO) -> FE {
+    pub fn extend_sender<IO: CommunicationChannel>(&mut self, io: &mut IO, comm: &mut u64) -> FE {
         let mut w = vec![FE::zero(); self.m];
 
         if let Some(prgs) = &mut self.prg_g0 {
@@ -138,7 +138,7 @@ impl Cope {
         }
 
         // Receive v from the receiver
-        let mut v = io.receive_stark252(self.m).expect("Failed to receive v");
+        let mut v = io.receive_stark252().expect("Failed to receive v");
 
         // Adjust v based on delta_bool
         for i in 0..self.m {
@@ -153,7 +153,7 @@ impl Cope {
         self.prm2pr(&v)
     }
 
-    pub fn extend_sender_batch<IO: CommunicationChannel>(&mut self, io: &mut IO, ret: &mut [FE], size: usize) {
+    pub fn extend_sender_batch<IO: CommunicationChannel>(&mut self, io: &mut IO, ret: &mut [FE], size: usize, comm: &mut u64) {
         // Generate ret_recv = ret_send + delta * u_recv
 
         let mut w = vec![vec![FE::zero(); size]; self.m];
@@ -167,7 +167,7 @@ impl Cope {
         }
 
         // Receive v values from the receiver
-        let received_data = io.receive_stark252(self.m * size).expect("Failed to receive v");
+        let received_data = io.receive_stark252().expect("Failed to receive v");
         for i in 0..self.m {
             for j in 0..size {
                 v[i][j] = received_data[i * size + j];
@@ -189,7 +189,7 @@ impl Cope {
         self.prm2pr_batch(ret, &v);
     }
 
-    pub fn extend_receiver<IO: CommunicationChannel>(&mut self, io: &mut IO, u: FE) -> FE {
+    pub fn extend_receiver<IO: CommunicationChannel>(&mut self, io: &mut IO, u: FE, comm: &mut u64) -> FE {
         let mut w0 = vec![FE::zero(); self.m];
         let mut w1 = vec![FE::zero(); self.m];
         let mut tau = vec![FE::zero(); self.m];
@@ -206,13 +206,13 @@ impl Cope {
         }
 
         // Send tau to the sender
-        io.send_stark252(&tau).expect("Failed to send tau");
+        *comm += io.send_stark252(&tau).expect("Failed to send tau");
 
         // Aggregate w0 into a single field element
         self.prm2pr(&w0)
     }
 
-    pub fn extend_receiver_batch<IO: CommunicationChannel>(&mut self, io: &mut IO, ret: &mut [FE], u: &[FE], size: usize) {
+    pub fn extend_receiver_batch<IO: CommunicationChannel>(&mut self, io: &mut IO, ret: &mut [FE], u: &[FE], size: usize, comm: &mut u64) {
         // Generate ret_recv = ret_send + delta * u_recv
 
         let mut w0 = vec![vec![FE::zero(); size]; self.m];
@@ -245,7 +245,7 @@ impl Cope {
 
         // assert_eq!(tau_flat.clone().len(), self.m * size, "tau_flat mismatch type");
 
-        io.send_stark252(&tau_flat).expect("Failed to send tau");
+        *comm += io.send_stark252(&tau_flat).expect("Failed to send tau");
         io.flush();
 
         // Aggregate w0 batch results into ret
@@ -278,8 +278,8 @@ impl Cope {
             io.send_stark252(b).expect("Failed to send `b` in check_triple");
         } else {
             // Receiver's role
-            let delta = io.receive_stark252(1).expect("Failed to receive `delta` in check_triple")[0];
-            let c = io.receive_stark252(sz).expect("Failed to receive `c` in check_triple");
+            let delta = io.receive_stark252().expect("Failed to receive `delta` in check_triple")[0];
+            let c = io.receive_stark252().expect("Failed to receive `c` in check_triple");
 
             // Perform the consistency check
             for i in 0..sz {

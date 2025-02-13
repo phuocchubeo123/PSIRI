@@ -101,7 +101,7 @@ impl CommunicationChannel for TcpChannel {
     }
 
     /// Receives STARK-252 field elements over the TCP channel.
-    fn receive_stark252(&mut self, count: usize) -> std::io::Result<Vec<FE>> {
+    fn receive_stark252(&mut self) -> std::io::Result<Vec<FE>> {
         // Define the chunk size (in bytes)
         const CHUNK_SIZE: usize = 1024; // Adjust this as needed
 
@@ -109,18 +109,6 @@ impl CommunicationChannel for TcpChannel {
         let mut size_buf = [0u8; 8];
         self.stream.read_exact(&mut size_buf)?;
         let total_size = u64::from_le_bytes(size_buf);
-
-        // Validate the size
-        let expected_size = (count * 32) as u64;
-        if total_size != expected_size {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                format!(
-                    "Unexpected data size received: expected {}, got {}",
-                    expected_size, total_size
-                ),
-            ));
-        }
 
         // Receive data in chunks
         let mut raw_data = vec![0u8; total_size as usize];
@@ -197,7 +185,7 @@ impl CommunicationChannel for TcpChannel {
                 .write_all(block)?;
         }
 
-        Ok(size * N)  // Return the number of bytes sent
+        Ok(size * (N as u64))  // Return the number of bytes sent
     }
 
     /// Receives a fixed-size block of data over the TCP channel.

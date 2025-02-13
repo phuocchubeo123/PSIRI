@@ -49,15 +49,15 @@ impl SpfssRecverFp {
     }
 
     /// Receive the message and reconstruct the tree.
-    pub fn recv<IO: CommunicationChannel>(&mut self, io: &mut IO, ot: &mut OTPre, s: usize) {
+    pub fn recv<IO: CommunicationChannel>(&mut self, io: &mut IO, ot: &mut OTPre, s: usize, comm: &mut u64) {
         let mut receive_data = vec![[0u8; 32]; self.depth - 1];
-        ot.recv(io, &mut receive_data, &mut self.b, self.depth - 1, s);
+        ot.recv(io, &mut receive_data, &mut self.b, self.depth - 1, s, comm);
 
         self.m = receive_data
             .iter()
             .map(|x| FE::from_bytes_le(x).unwrap())
             .collect::<Vec<FE>>();
-        self.share = io.receive_stark252(1).expect("Failed to receive share")[0];
+        self.share = io.receive_stark252().expect("Failed to receive share")[0];
     }
 
     /// Compute the GGM tree and reconstruct the nodes.
@@ -129,15 +129,10 @@ impl SpfssRecverFp {
                 &tmp[i..i + 2],
             );
         }
-
-        // self.ggm_tree[..2*item_n].par_chunks_mut(4).enumerate().for_each(|(i, children)| {
-        //     let mut prp2 = TwoKeyPRP::new();
-        //     prp.node_expand_2to4(children, &tmp[2*i..2*i+2]);
-        // });
     }
 
     /// Consistency check for the protocol.
-    pub fn consistency_check<IO: CommunicationChannel>(&mut self, io: &mut IO, z: FE, beta: FE) {
+    pub fn consistency_check<IO: CommunicationChannel>(&mut self, io: &mut IO, z: FE, beta: FE, comm: &mut u64) {
         // z = y + delta * beta
 
         let hash = Hash::new();
@@ -149,13 +144,13 @@ impl SpfssRecverFp {
         // Compute x_star
         let x_star = chi[self.choice_pos] * beta - beta;
         // Send x_star
-        io.send_stark252(&[x_star]).unwrap();
+        *comm += io.send_stark252(&[x_star]).expect("Failed to send x_star");
 
         // Compute W
         let w = vector_inner_product(&chi, &self.ggm_tree) - z;
 
         // Receive V and verify
-        let v = io.receive_stark252(1).expect("Failed to receive V")[0];
+        let v = io.receive_stark252().expect("Failed to receive V")[0];
 
         if w != v {
             panic!("SPFSS consistency check failed!");
@@ -164,8 +159,7 @@ impl SpfssRecverFp {
         }
     }
 
-    pub fn consistency_check_msg_gen<IO: CommunicationChannel>(&mut self, chi_alpha: &mut FE, w: &mut FE, io: &mut IO, seed: FE) {
-        // println!("Seed: {:?}", seed);
+    pub fn consistency_check_msg_gen(&mut self, chi_alpha: &mut FE, w: &mut FE, seed: FE) {
         let mut chi = vec![FE::zero(); self.leave_n];
 
         let hash = Hash::new();

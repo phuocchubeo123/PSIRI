@@ -90,6 +90,8 @@ fn main() {
         param = THREE_MILLION_LPN;
     }
 
+    let mut comm: u64 = 0;
+
     if role == "sender" {
         // Sender logic
         println!("Starting as Sender...");
@@ -97,20 +99,18 @@ fn main() {
             .expect("Failed to connect to receiver");
         let mut channel = TcpChannel::new(stream);
 
-        let data = channel.receive_stark252(size).expect("Failed to receive data from receiver");
+        let data = channel.receive_stark252().expect("Failed to receive data from receiver");
 
-        let mut oprf = OprfSender::new(&mut channel, size, true, param);
+        let mut oprf = OprfSender::new(&mut channel, size, true, param, &mut comm);
 
         let start = Instant::now();
         oprf.commit_X(&data);
         println!("X commit time: {:?}", start.elapsed());
 
-        oprf.receive_P_commit(&mut channel);
-        oprf.send_X_commit(&mut channel);
+        oprf.receive_P_commit(&mut channel, &mut comm);
+        oprf.send_X_commit(&mut channel, &mut comm);
 
-        let start = Instant::now();
-        oprf.send(&mut channel, &data);
-        println!("Send time: {:?}", start.elapsed());
+        oprf.send(&mut channel, &data, &mut comm);
     } else if role == "receiver" {
         // Receiver logic
         println!("Starting as Receiver...");
@@ -124,22 +124,19 @@ fn main() {
 
         channel.send_stark252(&data).expect("Failed to send data to sender");
 
-
         let start_protocol = Instant::now();
 
-        let start = Instant::now();
-        let mut oprf = OprfReceiver::new(&mut channel, size, true, param);
-        println!("Initiate protocol took {:?}", start.elapsed());
+        let mut oprf = OprfReceiver::new(&mut channel, size, true, param, &mut comm);
 
         let start = Instant::now();
         oprf.commit_P(&data);
         println!("P commit time: {:?}", start.elapsed());
 
-        oprf.send_P_commit(&mut channel);
-        oprf.receive_X_commit(&mut channel);
+        oprf.send_P_commit(&mut channel, &mut comm);
+        oprf.receive_X_commit(&mut channel, &mut comm);
 
         let mut outputs = vec![FE::zero(); size];
-        oprf.receive(&mut channel, &data);
+        oprf.receive(&mut channel, &data, &mut comm);
         println!("Whole protocol time: {:?}", start_protocol.elapsed());
 
     } else {

@@ -27,7 +27,7 @@ fn bench_32byte<IO: CommunicationChannel>(channel: &mut IO) {
 
     let start = Instant::now();
     for i in 0..size {
-        channel.send_block::<32>(&elements);
+        channel.send_block::<32>(&elements).unwrap();
     }
     let duration = start.elapsed();
 
