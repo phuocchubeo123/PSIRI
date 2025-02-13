@@ -1,10 +1,7 @@
 use crate::comm_channel::CommunicationChannel;
-
 use std::net::TcpStream;
 use p256::EncodedPoint;
-
 use std::io::{Write, Read};
-
 use lambdaworks_math::field::fields::fft_friendly::stark_252_prime_field::Stark252PrimeField;
 use lambdaworks_math::field::element::FieldElement;
 use lambdaworks_math::traits::ByteConversion;
@@ -25,7 +22,8 @@ impl TcpChannel {
 
 impl CommunicationChannel for TcpChannel {
     /// Sends an array of bits over the TCP channel.
-    fn send_bits(&mut self, bits: &[bool]) -> std::io::Result<()> {
+    /// This function will return the number of bytes sent.
+    fn send_bits(&mut self, bits: &[bool]) -> std::io::Result<u64> {
         // Serialize bits into bytes
         let mut byte_array = Vec::with_capacity((bits.len() + 7) / 8);
         let mut current_byte = 0u8;
@@ -44,7 +42,7 @@ impl CommunicationChannel for TcpChannel {
         self.stream.write_all(&num_bits.to_le_bytes())?;
         self.stream.write_all(&byte_array)?;
 
-        Ok(())
+        Ok((num_bits + 7) / 8)  // Return the number of bits sent
     }
 
     /// Receives an array of bits over the TCP channel.
@@ -74,7 +72,8 @@ impl CommunicationChannel for TcpChannel {
     }
 
     /// Sends a vector of STARK-252 field elements over the TCP channel.
-    fn send_stark252(&mut self, elements: &[FE]) -> std::io::Result<()> {
+    /// This function will return the number of bytes sent.
+    fn send_stark252(&mut self, elements: &[FE]) -> std::io::Result<u64> {
         // Define the chunk size (in bytes). For example, 32 elements (32 bytes each) per chunk.
         const CHUNK_SIZE: usize = 1024; // Adjust this as needed
 
@@ -98,9 +97,10 @@ impl CommunicationChannel for TcpChannel {
             start = end;
         }
 
-        Ok(())
+        Ok(total_size)  // Return the number of bytes sent
     }
 
+    /// Receives STARK-252 field elements over the TCP channel.
     fn receive_stark252(&mut self, count: usize) -> std::io::Result<Vec<FE>> {
         // Define the chunk size (in bytes)
         const CHUNK_SIZE: usize = 1024; // Adjust this as needed
@@ -145,62 +145,67 @@ impl CommunicationChannel for TcpChannel {
         })
     }
 
-
-    fn send_point(&mut self, point: &EncodedPoint) {
+    /// Sends an elliptic curve point over the TCP channel.
+    /// This function will return the number of bytes sent.
+    fn send_point(&mut self, point: &EncodedPoint) -> std::io::Result<u64> {
         let point_bytes = point.as_bytes(); // Serialize the point
         let size = point_bytes.len() as u64;
 
         // Send the size and then the serialized point data
         self.stream
-            .write_all(&size.to_le_bytes())
-            .expect("Failed to send point size");
+            .write_all(&size.to_le_bytes())?;
         self.stream
-            .write_all(point_bytes)
-            .expect("Failed to send point");
+            .write_all(point_bytes)?;
+
+        Ok(size)  // Return the number of bytes sent
     }
 
-    fn receive_point(&mut self) -> EncodedPoint {
+    /// Receives an elliptic curve point over the TCP channel.
+    fn receive_point(&mut self) -> std::io::Result<EncodedPoint> {
         // Read the size of the incoming point
         let mut size_buf = [0u8; 8];
         self.stream
-            .read_exact(&mut size_buf)
-            .expect("Failed to receive point size");
+            .read_exact(&mut size_buf)?;
         let size = u64::from_le_bytes(size_buf) as usize;
 
         // Read the serialized point data
         let mut point_bytes = vec![0u8; size];
         self.stream
-            .read_exact(&mut point_bytes)
-            .expect("Failed to receive point data");
+            .read_exact(&mut point_bytes)?;
 
         // Deserialize the point
-        EncodedPoint::from_bytes(&point_bytes).expect("Invalid point received")
+        EncodedPoint::from_bytes(&point_bytes).map_err(|_| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Invalid point received",
+            )
+        })
     }
 
-    // Send function that works with fixed-size blocks using const generics
-    fn send_block<const N: usize>(&mut self, data: &[[u8; N]]) {
+    /// Sends a fixed-size block of data over the TCP channel.
+    /// This function will return the number of bytes sent.
+    fn send_block<const N: usize>(&mut self, data: &[[u8; N]]) -> std::io::Result<u64> {
         let size = data.len() as u64;
 
         // Send the size of the data array
         self.stream
-            .write_all(&size.to_le_bytes())
-            .expect("Failed to send data size");
+            .write_all(&size.to_le_bytes())?;
 
         // Send the blocks of data
         for block in data {
             self.stream
-                .write_all(block)
-                .expect("Failed to send data block");
+                .write_all(block)?;
         }
+
+        Ok(size * N)  // Return the number of bytes sent
     }
 
-    // Receive function that returns Vec<[u8; N]> with fixed block size N
-    fn receive_block<const N: usize>(&mut self) -> Vec<[u8; N]> {
+    /// Receives a fixed-size block of data over the TCP channel.
+    fn receive_block<const N: usize>(&mut self) -> std::io::Result<Vec<[u8; N]>> {
         // Receive the size of the data array
         let mut size_buf = [0u8; 8];
         self.stream
-            .read_exact(&mut size_buf)
-            .expect("Failed to receive data size");
+            .read_exact(&mut size_buf)?;
         let size = u64::from_le_bytes(size_buf) as usize;
 
         // Receive the blocks of data into a Vec<[u8; N]>
@@ -208,15 +213,16 @@ impl CommunicationChannel for TcpChannel {
         for _ in 0..size {
             let mut block = [0u8; N];  // Fixed size array of N bytes
             self.stream
-                .read_exact(&mut block)
-                .expect("Failed to receive data block");
+                .read_exact(&mut block)?;
             data.push(block);
         }
 
-        data
+        Ok(data)
     }
 
-    fn send_u8(&mut self, data: &[u8]) -> std::io::Result<()> {
+    /// Sends a slice of u8 data over the TCP channel.
+    /// This function will return the number of bytes sent.
+    fn send_u8(&mut self, data: &[u8]) -> std::io::Result<u64> {
         const CHUNK_SIZE: usize = 1024; // Define the chunk size in bytes
 
         // Send the total size first
@@ -231,10 +237,10 @@ impl CommunicationChannel for TcpChannel {
             start = end;
         }
 
-        Ok(())
+        Ok(total_size)  // Return the number of bytes sent
     }
 
-    /// Receives a string (or serialized FriLayer) over the TCP channel.
+    /// Receives u8 data over the TCP channel.
     fn receive_u8(&mut self) -> std::io::Result<Vec<u8>> {
         const CHUNK_SIZE: usize = 1024; // Define the chunk size in bytes
 
@@ -255,7 +261,8 @@ impl CommunicationChannel for TcpChannel {
         Ok(raw_data)
     }
 
-    fn flush(&mut self) {
-        self.stream.flush().expect("Failed to flush stream");
+    /// Flushes the TCP stream.
+    fn flush(&mut self) -> std::io::Result<()> {
+        self.stream.flush()
     }
 }
