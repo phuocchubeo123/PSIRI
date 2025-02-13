@@ -26,7 +26,7 @@ use rayon::current_num_threads;
 pub type F = Stark252PrimeField;
 pub type FE = FieldElement<F>;
 
-const NUM_QUERIES: usize = 100;
+const NUM_QUERIES: usize = 128;
 
 pub struct OprfSender {
     n: usize,

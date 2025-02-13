@@ -87,15 +87,15 @@ fn main() {
     println!("Committed? :{}", committed);
 
     let size = 1 << log_size;
-    let mut param = MILLION_LPN;
+    let mut param = LPN17;
     if params_idx == 0 {
         param = LPN17;
     } else if params_idx == 1{
-        param = MILLION_LPN;
+        param = LPN19;
     } else if params_idx == 2 {
-        param = ONE_MILLION_LPN;
+        param = LPN20;
     } else if params_idx == 3 {
-        param = TWO_MILLION_LPN;
+        param = LPN21;
     } else if params_idx == 4 {
         param = THREE_MILLION_LPN;
     }

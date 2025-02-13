@@ -97,13 +97,13 @@ pub const LPN17: PrimalLPNParameterFp61 = PrimalLPNParameterFp61 {
     n_pre0: 1800, t_pre0: 225, k_pre0: 600, log_bin_sz_pre0: 3,
 };
 
-pub const MILLION_LPN: PrimalLPNParameterFp61 = PrimalLPNParameterFp61 {
+pub const LPN19: PrimalLPNParameterFp61 = PrimalLPNParameterFp61 {
     n: 675328, t: 1319, k: 50000, log_bin_sz: 9,
     n_pre: 160512, t_pre: 2508, k_pre: 19870, log_bin_sz_pre: 6,
     n_pre0: 22400, t_pre0: 700, k_pre0: 2000, log_bin_sz_pre0: 5,
 };
 
-pub const ONE_MILLION_LPN: PrimalLPNParameterFp61 = PrimalLPNParameterFp61 {
+pub const LPN20: PrimalLPNParameterFp61 = PrimalLPNParameterFp61 {
     n: 1228800,
     t: 1200,
     k: 70000,
@@ -118,7 +118,7 @@ pub const ONE_MILLION_LPN: PrimalLPNParameterFp61 = PrimalLPNParameterFp61 {
     log_bin_sz_pre0: 5,
 };
 
-pub const TWO_MILLION_LPN: PrimalLPNParameterFp61 = PrimalLPNParameterFp61 {
+pub const LPN21: PrimalLPNParameterFp61 = PrimalLPNParameterFp61 {
     n: 2701312,
     t: 1319,
     k: 130000,
