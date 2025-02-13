@@ -91,52 +91,22 @@ impl PrimalLPNParameterFp61 {
     }
 }
 
-// Default instance
-pub const FP_DEFAULT: PrimalLPNParameterFp61 = PrimalLPNParameterFp61 {
-    n: 10168320,
-    t: 4965,
-    k: 158000,
-    log_bin_sz: 11,
-    n_pre: 166400,
-    t_pre: 2600,
-    k_pre: 5060,
-    log_bin_sz_pre: 6,
-    n_pre0: 9600,
-    t_pre0: 600,
-    k_pre0: 1220,
-    log_bin_sz_pre0: 4,
+pub const LPN16: PrimalLPNParameterFp61 = PrimalLPNParameterFp61 {
+    n: 80000, t: 1250, k: 5000, log_bin_sz: 6,
+    n_pre: 10304, t_pre: 644, k_pre: 1120, log_bin_sz_pre: 4,
+    n_pre0: 1800, t_pre0: 225, k_pre0: 600, log_bin_sz_pre0: 4,
 };
 
-// Wolverine instance
-pub const WOLVERINE_LPN: PrimalLPNParameterFp61 = PrimalLPNParameterFp61 {
-    n: 10805248,
-    t: 1319,
-    k: 589760,
-    log_bin_sz: 13,
-    n_pre: 642048,
-    t_pre: 2508,
-    k_pre: 19870,
-    log_bin_sz_pre: 8,
-    n_pre0: 22400,
-    t_pre0: 700,
-    k_pre0: 2000,
-    log_bin_sz_pre0: 5,
+pub const LPN17: PrimalLPNParameterFp61 = PrimalLPNParameterFp61 {
+    n: 150016, t: 1172, k: 9000, log_bin_sz: 7,
+    n_pre: 10304, t_pre: 644, k_pre: 1120, log_bin_sz_pre: 4,
+    n_pre0: 1800, t_pre0: 225, k_pre0: 600, log_bin_sz_pre0: 4,
 };
 
-// instance
 pub const MILLION_LPN: PrimalLPNParameterFp61 = PrimalLPNParameterFp61 {
-    n: 675328,
-    t: 1319,
-    k: 50000,
-    log_bin_sz: 9,
-    n_pre: 160512,
-    t_pre: 2508,
-    k_pre: 19870,
-    log_bin_sz_pre: 6,
-    n_pre0: 22400,
-    t_pre0: 700,
-    k_pre0: 2000,
-    log_bin_sz_pre0: 5,
+    n: 675328, t: 1319, k: 50000, log_bin_sz: 9,
+    n_pre: 160512, t_pre: 2508, k_pre: 19870, log_bin_sz_pre: 6,
+    n_pre0: 22400, t_pre0: 700, k_pre0: 2000, log_bin_sz_pre0: 5,
 };
 
 pub const ONE_MILLION_LPN: PrimalLPNParameterFp61 = PrimalLPNParameterFp61 {

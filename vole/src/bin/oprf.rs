@@ -8,7 +8,7 @@ use psiri_vole::socket_channel::TcpChannel;
 use psiri_vole::comm_channel::CommunicationChannel;
 use psiri_vole::psi_sender::OprfSender;
 use psiri_vole::psi_receiver::OprfReceiver;
-use psiri_vole::vole_triple::{MILLION_LPN, ONE_MILLION_LPN, TWO_MILLION_LPN, THREE_MILLION_LPN};
+use psiri_vole::vole_triple::*;
 use psiri_vole::utils::rand_field_element;
 use std::net::{TcpStream, TcpListener};
 use std::time::Instant;
@@ -89,12 +89,16 @@ fn main() {
     let size = 1 << log_size;
     let mut param = MILLION_LPN;
     if params_idx == 0 {
-        param = MILLION_LPN;
-    } else if params_idx == 1 {
-        param = ONE_MILLION_LPN;
+        param = LPN16;
+    } else if params_idx == 1{
+        param = LPN17;
     } else if params_idx == 2 {
-        param = TWO_MILLION_LPN;
+        param = MILLION_LPN;
     } else if params_idx == 3 {
+        param = ONE_MILLION_LPN;
+    } else if params_idx == 4 {
+        param = TWO_MILLION_LPN;
+    } else if params_idx == 5 {
         param = THREE_MILLION_LPN;
     }
 
