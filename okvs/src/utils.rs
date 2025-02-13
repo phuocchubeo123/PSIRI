@@ -53,8 +53,6 @@ pub fn simple_gauss(
 
     let mut bands_FE = vec![vec![FE::zero(); band_width]; rows];
 
-    let start = Instant::now(); 
-
     for i in 0..rows {
         for j in 0..4 {
             for k in 0..64 {
@@ -67,8 +65,6 @@ pub fn simple_gauss(
             }
         }
     }
-
-    println!("Time to convert to FE bands: {:?}", start.elapsed());
 
     let mut first_nonzero = vec![band_width; rows];
 
@@ -154,8 +150,6 @@ pub fn simple_gauss(
     });
 
     // back substitution
-    let start = Instant::now();
-
     let mut x = vec![FE::zero(); cols];
     for i in (0..rows).rev() {
         let mut res = y[i];
@@ -167,8 +161,6 @@ pub fn simple_gauss(
         }
         x[pivot[i]] = res;
     }
-
-    println!("Time to back substitution: {:?}", start.elapsed());
 
     Ok(x)
 }

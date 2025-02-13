@@ -62,6 +62,12 @@ fn main() {
                 .required(true)
                 .index(6)
         )
+        .arg(
+            Arg::new("committed")
+                .help("Either committed or non committed")
+                .required(true)
+                .index(7)
+        )
         .get_matches();
 
     let role = matches.get_one::<String>("role").unwrap();
@@ -70,6 +76,7 @@ fn main() {
     let log_size = matches.get_one::<String>("log_size").unwrap().parse::<usize>().unwrap();
     let num_threads = matches.get_one::<String>("threads").unwrap().parse::<usize>().unwrap();
     let params_idx = matches.get_one::<String>("params").unwrap().parse::<usize>().unwrap();
+    let committed = matches.get_one::<String>("params").unwrap().parse::<bool>().unwrap();
     
     ThreadPoolBuilder::new()
         .num_threads(num_threads) // Adjust the number of threads as needed
@@ -101,7 +108,7 @@ fn main() {
 
         let data = channel.receive_stark252().expect("Failed to receive data from receiver");
 
-        let mut oprf = OprfSender::new(&mut channel, size, true, param, &mut comm);
+        let mut oprf = OprfSender::new(&mut channel, size, committed, param, &mut comm);
 
         let start = Instant::now();
         oprf.commit_X(&data);
@@ -126,7 +133,7 @@ fn main() {
 
         let start_protocol = Instant::now();
 
-        let mut oprf = OprfReceiver::new(&mut channel, size, true, param, &mut comm);
+        let mut oprf = OprfReceiver::new(&mut channel, size, committed, param, &mut comm);
 
         let start = Instant::now();
         oprf.commit_P(&data);

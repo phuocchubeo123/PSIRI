@@ -80,19 +80,11 @@ impl RbOkvs {
         let mut start_ids: Vec<usize> = vec![0; n];
         let mut y = vec![FE::zero(); n];
 
-        let start = Instant::now();
-
         start_pos.par_iter_mut().enumerate().for_each(|(i, start_pos_i)| {
             *start_pos_i = (i, hash_to_index(input[i].0, &self.r1, self.columns - self.band_width));
         });
 
-        // for i in (n - n % 8)..n {
-        //     start_pos[i] = (i, hash_to_index(input[i].0, &self.r1, self.columns - self.band_width));
-        // }
-
         radix_sort(&mut start_pos, self.columns - self.band_width - 1);
-
-        println!("Time to radix sort: {:?}", start.elapsed());
 
         matrix.par_iter_mut().enumerate().for_each(|(i, matrix_i)| {
             *matrix_i = hash_to_band(input[start_pos[i].0].0, &self.r2);
@@ -116,8 +108,6 @@ impl RbOkvs {
         for i in (n - n % 8)..n {
             start_ids[i] = start_pos[i].1;
         }
-
-        println!("Time to hash to band: {:?}", start.elapsed());
 
         Ok((matrix, start_ids, y))
     }
