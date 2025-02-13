@@ -143,4 +143,6 @@ fn main() {
         eprintln!("Invalid role. Use 'sender' or 'receiver'.");
         std::process::exit(1);
     }
+
+    println!("Total data sent: {} bytes", comm);
 }
